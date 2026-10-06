@@ -5,8 +5,8 @@ CPPFLAGS += -iquote include
 
 .PHONY: all clean
 
-SOURCES := src/vcontainer.c src/cgroup.c src/namespace.c src/seccomp.c src/remember.c
-HEADERS := include/cgroup.h include/namespace.h include/seccomp.h include/remember.h
+SOURCES := src/vcontainer.c src/cgroup.c src/namespace.c src/seccomp.c src/remember.c src/log.c src/state.c
+HEADERS := include/cgroup.h include/namespace.h include/seccomp.h include/remember.h include/log.h include/state.h
 BINARY := build/vcontainer
 
 all: $(BINARY)
