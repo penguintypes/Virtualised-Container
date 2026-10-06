@@ -11,6 +11,8 @@ usage() {
     echo " $0 run IMAGE COMMAND [ARGS...]" >&2
     echo " $0 volume {create|list|inspect|remove} [NAME]" >&2
     echo " $0 exec CONTAINER -- COMMAND [ARGS...]" >&2
+    echo " $0 logs [-f] CONTAINER" >&2
+    echo " $0 inspect CONTAINER" >&2
     exit 2
 }
 
@@ -219,6 +221,121 @@ case "$action" in
         ' vcontainer-delete "$image"
         exit 0
         ;;
+    logs)
+        follow=false
+
+        if [ "${2:-}" = "-f" ]; then
+            follow=true
+            name="${3:-}"
+            [ "$#" -eq 3 ] ||usage
+        else
+            name="${2:-}"
+            [ "$#" -eq  2 ] || usage
+        fi
+
+        case "$name" in
+            ""|*[!A-Za-z0-9_.-]*)
+                echo "Usage: $0 logs [-f] CONTAINER" >&2
+                exit 2
+                ;;
+        esac
+
+        lima sh -lc '
+            set -eu
+
+            follow="$1"
+            name="$2"
+            log="/var/lib/vcontainer/containers/$name/container.log"
+
+            [ -f "$log" ] || {
+                echo "no logs found for container: $name" >&2
+                exit 1
+            }
+
+            if [ "$follow" = true ]; then
+                sudo tail -n +1 -f "$log"
+            else
+                sudo cat "$log"
+            fi
+        ' vcontainer-logs "$follow" "$name"
+
+        exit 0
+        ;;
+    inspect)
+        name="${2:-}"
+
+        case "$name" in
+            ""|*[!A-Za-z0-9_.-]*)
+                echo "Usage: $0 inspect CONTAINER" >&2
+                exit 2
+                ;;
+        esac
+
+        lima sh -lc '
+            set -eu
+
+            name="$1"
+            group="/sys/fs/cgroup/vcontainer/$name"
+            log="/var/lib/vcontainer/containers/$name/container.log"
+            config="/var/lib/vcontainer/containers/$name/config"
+
+            echo "name=$name"
+
+            if sudo test -f "$config"; then
+                echo "config:"
+                sudo sed "s/^/ /" "$config"
+            else
+                echo "config="
+            fi
+
+            if [ -d "$group" ]; then
+                pids=$(sudo cat "$group/cgroup.procs")
+
+                if [ -n "$pids" ]; then
+                    status="running"
+                    pid=$(printf "%s\n" "$pids" | sed -n "1p")
+                else
+                    status="stopped"
+                    pid=""
+                fi
+
+                echo "status=$status"
+                echo "pids=$(printf "%s\n" "$pids" | tr "\n" " ")"
+                echo "memory_max=$(sudo cat "$group/memory.max")"
+                echo "memory_current=$(sudo cat "$group/memory.current")"
+                echo "pids_max=$(sudo cat "$group/pids.max")"
+                echo "pids_current=$(sudo cat "$group/pids.current")"
+                echo "cpu_max=$(sudo cat "$group/cpu.max")"
+
+                if [ -n "$pid" ]; then
+                    echo "volumes:"
+
+                    sudo awk '"'"'
+                        $4 ~ /\/var\/lib\/vcontainer\/volumes\// {
+                            volume = $4
+                            sub("^.*/volumes/", "", volume)
+                            sub("/_data$", "", volume)
+                            printf "  %s:%s\n", volume, $5
+                        }
+                    '"'"' "/proc/$pid/mountinfo"
+                fi
+            else
+                if sudo test -f "$config"; then
+                    echo "status=stopped"
+                else
+                    echo "status=unknown"
+                    echo "note=no saved container state exists"
+                fi
+            fi
+            if sudo test -f "$log"; then
+                echo "log=$log"
+            else
+                echo "log="
+            fi
+        ' vcontainer-inspect "$name"
+
+        exit 0
+        ;;
     ps)
         lima sh -lc '
             set -eu
@@ -336,10 +453,14 @@ lima sh -lc '
   cp "$project_dir/src/namespace.c" "$work/src/"
   cp "$project_dir/src/seccomp.c" "$work/src/"
   cp "$project_dir/src/remember.c" "$work/src/"
+  cp "$project_dir/src/log.c" "$work/src/"
+  cp "$project_dir/src/state.c" "$work/src/"
   cp "$project_dir/include/cgroup.h" "$work/include/"
   cp "$project_dir/include/namespace.h" "$work/include/"
   cp "$project_dir/include/seccomp.h" "$work/include/"
   cp "$project_dir/include/remember.h" "$work/include/"
+  cp "$project_dir/include/log.h" "$work/include/"
+  cp "$project_dir/include/state.h" "$work/include/"
   cp "$project_dir/src/cgroup.sh" "$work/"
   cp "$project_dir/src/image.sh" "$work/"
   cp "$project_dir/Makefile" "$work/"
