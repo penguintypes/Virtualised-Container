@@ -44,15 +44,14 @@
 #include "namespace.h"
 #include "seccomp.h"
 #include "remember.h"
+#include "log.h"
+#include "state.h"
+#include "overlay.h"
+#include "network.h"
 
 #define STACK_SIZE (1024 * 1024)
 #define MAX_SECCOMP_DENIES 32
 #define MAX_VOLUMES 16
-
-struct volume_mount {
-    const char *source;
-    const char *target;
-};
 
 /* rootfs - Image which will bootup the isloated offspring
  * hostname - Name of the child
@@ -80,13 +79,18 @@ struct config {
     int sync_fd;
     bool use_userns;
     bool detach;
+    bool bridge_network;
 
     bool seccomp_enabled;
     const char *seccomp_denies[MAX_SECCOMP_DENIES];
     size_t seccomp_deny_count;
 
-    struct volume_mount volumes[MAX_VOLUMES];
+    struct container_volume volumes[MAX_VOLUMES];
     size_t volume_count;
+
+    int log_fd;
+
+    const char *container_name;
 };
 
 static void die(const char *message)
@@ -99,7 +103,8 @@ static void usage(const char *program)
     fprintf(stderr,
         "Usage: %s run (--rootfs DIRECTORY | --image NAME) --name NAME [--hostname NAME] "
         "[--memory-max VALUE] [--pids-max COUNT] "
-        "[--cpu-max QUOTA PERIOD] [--volume SOURCE:TARGET] -- COMMAND [ARGS...]\n",
+        "[--cpu-max QUOTA PERIOD] [--volume SOURCE:TARGET] "
+        "[--network bridge --ip ADDRESS] -- COMMAND [ARGS...]\n",
             program);
 }
 
@@ -110,30 +115,37 @@ static int mkdir_if_missing(const char *path, mode_t mode)
     return -1;
 }
 
-static int set_up_rootfs(const char *rootfs,
-    const struct volume_mount *volumes, size_t volume_count)
+static int set_up_rootfs(const char *rootfs, const char *container_name,
+    const struct container_volume *volumes, size_t volume_count)
 {
+    char merged_rootfs[4096];
     char oldroot[4096];
-    if (snprintf(oldroot, sizeof(oldroot), "%s/.oldroot", rootfs) >=
-        (int)sizeof(oldroot)) {
-        fprintf(stderr, "vcontainer: rootfs path is too long\n");
-        return -1;
-    }
 
     /* Do not propagate mounts back into the Lima host namespace. */
     if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) != 0) {
         die("make mounts private");
         return -1;
     }
-    if (mount(rootfs, rootfs, NULL, MS_BIND | MS_REC, NULL) != 0) {
+    /*if (mount(rootfs, rootfs, NULL, MS_BIND | MS_REC, NULL) != 0) {
         die("bind mount rootfs");
+        return -1;
+    }*/
+    if (overlay_mount_rootfs(rootfs, container_name,
+                             merged_rootfs, sizeof(merged_rootfs)) != 0) {
+        die("mount overlay rootfs");
+        return -1;
+    }
+
+    if (snprintf(oldroot, sizeof(oldroot), "%s/.oldroot", merged_rootfs) >=
+        (int)sizeof(oldroot)) {
+        fprintf(stderr, "vcontainer: overlay rootfs path is too long\n");
         return -1;
     }
     if (mkdir_if_missing(oldroot, 0700) != 0) {
         die("create .oldroot");
         return -1;
     }
-    if (chdir(rootfs) != 0 ||
+    if (chdir(merged_rootfs) != 0 ||
         syscall(SYS_pivot_root, ".", ".oldroot") != 0 || chdir("/") != 0) {
         die("pivot_root");
         return -1;
@@ -190,13 +202,28 @@ static int child_main(void *argument)
             _exit(127);
     }
     close(config->sync_fd);
+    if (config->log_fd >= 0) {
+        if (dup2(config->log_fd, STDOUT_FILENO) < 0 ||
+            dup2(config->log_fd, STDERR_FILENO) < 0) {
+            die("redirect container log");
+            _exit(127);
+        }
+        if (config->log_fd > STDERR_FILENO)
+            close(config->log_fd);
+    }
     if (sethostname(config->hostname, strlen(config->hostname)) != 0) {
         die("set hostname");
         _exit(127);
     }
     if (set_up_rootfs(config->rootfs,
+                      config->container_name,
                       config->volumes,
                       config->volume_count) != 0) {
+        _exit(127);
+    }
+
+    if (config->bridge_network && network_configure_resolver() != 0) {
+        die("configure container resolver");
         _exit(127);
     }
 
@@ -226,26 +253,74 @@ static int write_text_file(const char *path, const char *text)
     return result;
 }
 
+static int subordinate_start(const char *path, const char *user,
+                             unsigned long *start)
+{
+    FILE *file = fopen(path, "r");
+    char line[256];
+
+    if (file == NULL)
+        return -1;
+
+    while (fgets(line, sizeof(line), file) != NULL) {
+        char owner[128];
+        unsigned long first;
+        unsigned long count;
+
+        if (sscanf(line, "%127[^:]:%lu:%lu", owner, &first, &count) == 3 &&
+            strcmp(owner, user) == 0 && count >= 65535) {
+            *start = first;
+            fclose(file);
+            return 0;
+        }
+    }
+
+    fclose(file);
+    errno = ENOENT;
+    return -1;
+}
+
 static int map_user_and_group(pid_t pid)
 {
     char path[128];
-    char map[128];
+    char map[256];
     uid_t uid = getuid();
     gid_t gid = getgid();
+    unsigned long subuid = 0;
+    unsigned long subgid = 0;
+    bool use_subids = uid == 0;
 
-    snprintf(path, sizeof(path), "/proc/%ld/setgroups", (long)pid);
-    if (write_text_file(path, "deny\n") != 0 && errno != ENOENT) {
-        die("disable supplementary groups");
-        return -1;
+    if (use_subids) {
+        const char *owner = getenv("SUDO_USER");
+        if (owner == NULL || owner[0] == '\0' ||
+            subordinate_start("/etc/subuid", owner, &subuid) != 0 ||
+            subordinate_start("/etc/subgid", owner, &subgid) != 0) {
+            die("find subordinate UID/GID ranges");
+            return -1;
+        }
+    }
+
+    if (!use_subids) {
+        snprintf(path, sizeof(path), "/proc/%ld/setgroups", (long)pid);
+        if (write_text_file(path, "deny\n") != 0 && errno != ENOENT) {
+            die("disable supplementary groups");
+            return -1;
+        }
     }
     snprintf(path, sizeof(path), "/proc/%ld/uid_map", (long)pid);
-    snprintf(map, sizeof(map), "0 %lu 1\n", (unsigned long)uid);
+    if (use_subids)
+        snprintf(map, sizeof(map), "0 0 1\n1 %lu 65535\n", subuid);
+    else
+        snprintf(map, sizeof(map), "0 %lu 1\n", (unsigned long)uid);
     if (write_text_file(path, map) != 0) {
         die("write uid_map");
         return -1;
     }
     snprintf(path, sizeof(path), "/proc/%ld/gid_map", (long)pid);
-    snprintf(map, sizeof(map), "0 %lu 1\n", (unsigned long)gid);
+    if (use_subids)
+        snprintf(map, sizeof(map), "0 0 1\n1 %lu 65535\n", subgid);
+    else
+        snprintf(map, sizeof(map), "0 %lu 1\n", (unsigned long)gid);
     if (write_text_file(path, map) != 0) {
         die("write gid_map");
         return -1;
@@ -264,7 +339,9 @@ int main(int argc, char **argv)
     const char *seccomp_denies[MAX_SECCOMP_DENIES];
     size_t seccomp_deny_count = 0;
     bool detach = false;
-    struct volume_mount volumes[MAX_VOLUMES] = { 0 };
+    bool bridge_network = false;
+    const char *network_ip = NULL;
+    struct container_volume volumes[MAX_VOLUMES] = { 0 };
     size_t volume_count = 0;
     int index = 1;
 
@@ -292,6 +369,19 @@ int main(int argc, char **argv)
             }
 
             cgroup_id = argv[index + 1];
+            index += 2;
+        }
+        else if (strcmp(argv[index], "--network") == 0 && index + 1 < argc) {
+            if (strcmp(argv[index + 1], "bridge") != 0) {
+                fprintf(stderr, "vcontainer: only --network bridge is supported\n");
+                return EXIT_FAILURE;
+            }
+
+            bridge_network = true;
+            index += 2;
+        }
+        else if (strcmp(argv[index], "--ip") == 0 && index + 1 < argc) {
+            network_ip = argv[index + 1];
             index += 2;
         }
         else if (strcmp(argv[index], "--detach") == 0) {
@@ -340,7 +430,7 @@ int main(int argc, char **argv)
                 }
             }
 
-            volumes[volume_count++] = (struct volume_mount) {
+            volumes[volume_count++] = (struct container_volume) {
                 .source = argv[index + 1],
                 .target = separator + 1,
             };
@@ -418,10 +508,45 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
+    if (bridge_network && network_ip == NULL) {
+        fprintf(stderr,
+                "vcontainer: --network bridge requires --ip ADDRESS\n");
+        return EXIT_FAILURE;
+    }
+
+    if (!bridge_network && network_ip != NULL) {
+        fprintf(stderr,
+                "vcontainer: --ip requires --network bridge\n");
+        return EXIT_FAILURE;
+    }
+
+    int log_fd = -1;
+
+    if (detach) {
+        log_fd = log_open(cgroup_id);
+        if (log_fd < 0) {
+            die("open container log");
+            return EXIT_FAILURE;
+        }
+    }
+
     if (cgroup_call("create", cgroup_id, memory_max, pids_max,
         cpu_quota, cpu_period, 0) != 0) {
             fprintf(stderr, "vcontainer: could not create cgroup\n");
             return EXIT_FAILURE;
+    }
+
+    if (state_write(cgroup_id, image, rootfs, detach,
+                    memory_max, pids_max, cpu_quota, cpu_period,
+                    volumes, volume_count, &argv[index + 1]) != 0) {
+        die("write container state");
+
+        if (log_fd >= 0)
+            close(log_fd);
+
+        cgroup_call("destroy", cgroup_id, memory_max, pids_max,
+                    cpu_quota, cpu_period, 0);
+        return EXIT_FAILURE;
     }
 
     int sync_pipe[2] = {-1, -1};
@@ -464,11 +589,14 @@ int main(int argc, char **argv)
         .command = &argv[index + 1],
         .sync_fd = sync_pipe[0],
         .detach = detach,
+        .bridge_network = bridge_network,
         .use_userns = use_userns,
         .seccomp_enabled = seccomp_enabled,
         .seccomp_deny_count = seccomp_deny_count,
         .seccomp_denies = { 0 },
         .volume_count = volume_count,
+        .log_fd = log_fd,
+        .container_name = cgroup_id,
     };
 
     for (size_t i = 0; i < seccomp_deny_count; ++i){
@@ -501,12 +629,29 @@ int main(int argc, char **argv)
                 child_ready = false;
     }
 
+    if (child_ready && bridge_network &&
+        network_setup_bridge(cgroup_id, child, network_ip) != 0) {
+        die("set up bridge network");
+        child_ready = false;
+    }
+
     if (child_ready && write(sync_pipe[1], "1", 1) != 1) {
         die("release child");
         child_ready = false;
     }
 
     close(sync_pipe[1]);
+
+    if (!child_ready) {
+        int failed_status;
+        waitpid(child, &failed_status, 0);
+        cgroup_call("destroy", cgroup_id, memory_max, pids_max,
+                    cpu_quota, cpu_period, 0);
+        if (log_fd >= 0)
+            close(log_fd);
+        munmap(mapping, mapping_size);
+        return EXIT_FAILURE;
+    }
 
     if (detach) {
         printf("container %s started: host PID %ld\n",
