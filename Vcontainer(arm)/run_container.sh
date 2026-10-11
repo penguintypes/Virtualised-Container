@@ -13,6 +13,8 @@ usage() {
     echo " $0 exec CONTAINER -- COMMAND [ARGS...]" >&2
     echo " $0 logs [-f] CONTAINER" >&2
     echo " $0 inspect CONTAINER" >&2
+    echo " $0 rm CONTAINER" >&2
+    echo " $0 [--network bridge --ip ADDRESS] "
     exit 2
 }
 
@@ -409,6 +411,46 @@ case "$action" in
 
       exit 0
       ;;
+    rm)
+        name="${2:-}"
+
+         case "$name" in
+            ""|*[!A-Za-z0-9_.-]*)
+                echo "Usage: $0 rm CONTAINER" >&2
+                exit 2
+                ;;
+        esac
+
+        lima sh -lc '
+            set -eu
+
+            name="$1"
+            group="/sys/fs/cgroup/vcontainer/$name"
+            state_dir="/var/lib/vcontainer/containers/$name"
+
+            if [ -d "$group" ]; then
+                pids=$(sudo cat "$group/cgroup.procs")
+
+                if [ -n "$pids" ]; then
+                    echo "container is running; $name " >&2
+                    echo "stop it first: run_container.sh stop $name" >&2
+                    exit 1
+                fi
+
+                sudo rmdir "$group"
+            fi
+
+            if ! sudo test -d "$state_dir"; then
+                echo "container metadata not found: $name" >&2
+                exit 1
+            fi
+
+            sudo rm -rf -- "$state_dir"
+            echo "removed: $name"
+        ' vcontainer-rm "$name"
+
+        exit 0
+        ;;
     stop)
         name="${2:-}"
 
@@ -455,18 +497,23 @@ lima sh -lc '
   cp "$project_dir/src/remember.c" "$work/src/"
   cp "$project_dir/src/log.c" "$work/src/"
   cp "$project_dir/src/state.c" "$work/src/"
+  cp "$project_dir/src/overlay.c" "$work/src/"
+  cp "$project_dir/src/network.c" "$work/src/"
   cp "$project_dir/include/cgroup.h" "$work/include/"
   cp "$project_dir/include/namespace.h" "$work/include/"
   cp "$project_dir/include/seccomp.h" "$work/include/"
   cp "$project_dir/include/remember.h" "$work/include/"
   cp "$project_dir/include/log.h" "$work/include/"
   cp "$project_dir/include/state.h" "$work/include/"
+  cp "$project_dir/include/overlay.h" "$work/include/"
+  cp "$project_dir/include/network.h" "$work/include/"
   cp "$project_dir/src/cgroup.sh" "$work/"
   cp "$project_dir/src/image.sh" "$work/"
+  cp "$project_dir/src/network.sh" "$work/"
   cp "$project_dir/Makefile" "$work/"
 
   cd "$work"
-  chmod 755 cgroup.sh image.sh
+  chmod 755 cgroup.sh image.sh network.sh
   make clean
   make
 ' vcontainer-build "$project_dir"
