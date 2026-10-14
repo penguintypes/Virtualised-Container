@@ -2,5 +2,4 @@
 
 #Hello hello
 
-Fck em cheeks
-Aryan != Ariana Grande ;-;
+Here bilding Docker from Scratch as a Learning Project
