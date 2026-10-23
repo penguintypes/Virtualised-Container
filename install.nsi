@@ -1,3 +1,4 @@
+SetCompressor /SOLID lzma
 Name "vcontainer"
 OutFile "install.exe"
 RequestExecutionLevel user
