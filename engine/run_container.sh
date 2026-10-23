@@ -235,13 +235,11 @@ case "$action" in
 
         if [ -n "$publish_port" ]; then
             [ -n "$container_name" ] || { echo "-p requires --name" >&2; exit 2; }
-            used_ips=$(sudo awk -F= '/^ip=/{print $2}' /var/lib/vcontainer/containers/*/config 2>/dev/null || true)
-            for i in $(seq 10 250); do
-                if ! echo "$used_ips" | grep -qw "10.88.0.$i"; then
-                    container_ip="10.88.0.$i"
-                    break
-                fi
-            done
+            case "$container_name" in
+                blog) container_ip=10.88.0.11 ;;
+                runner) container_ip=10.88.0.12 ;;
+                *) container_ip="10.88.0.$((10 + $(printf %s "$container_name" | cksum | awk '{print $1 % 200}')))" ;;
+            esac
             resolved_args=(--network bridge --ip "$container_ip" "${resolved_args[@]}")
         fi
         set -- "${resolved_args[@]}"

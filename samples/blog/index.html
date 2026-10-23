@@ -7,7 +7,7 @@
 This post was built from a **Vcfile**.</textarea><button onclick="save()">Save post</button></section><article id="preview"></article></main>
 <script>
 const $=x=>document.querySelector(x); const render=s=>s.split('\n').map(x=>x.startsWith('# ')?'<h2>'+x.slice(2)+'</h2>':x.replace(/\*\*(.*?)\*\*/g,'<b>$1</b>')||'<br>').join('');
-async function poll(){try{const r=await fetch('/posts/'+encodeURIComponent($('#name').value));if(r.ok){$('#edit').value=await r.text();}}catch(e){} $('#preview').innerHTML=render($('#edit').value)}
+async function poll(){try{const r=await fetch('/posts/'+encodeURIComponent($('#name').value));if(r.ok && document.activeElement !== $('#edit')){$('#edit').value=await r.text();}}catch(e){} $('#preview').innerHTML=render($('#edit').value)}
 async function save(){await fetch('/posts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:$('#name').value,body:$('#edit').value})});poll()}
 $('#edit').oninput=()=>$('#preview').innerHTML=render($('#edit').value);poll();setInterval(poll,1000)
 </script>

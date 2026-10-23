@@ -124,7 +124,7 @@ static int set_up_rootfs(const char *rootfs, const char *container_name,
     char merged_rootfs[4096];
     char oldroot[4096];
 
-    /* Do not propagate mounts back into the Lima host namespace. */
+    // make sure mounts dont leak back to the host system
     if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) != 0) {
         die("make mounts private");
         return -1;
@@ -210,6 +210,7 @@ static int child_main(void *argument)
 
     /* Root the cgroup namespace after the parent attaches this process. */
     if (unshare(CLONE_NEWCGROUP) != 0) {
+        // printf("debug: cgroup namespace failed\n");
         die("create cgroup namespace");
         _exit(127);
     }
@@ -524,8 +525,11 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    if (hostname == NULL)
+    if (hostname != NULL) {
+        // hostname already provided by user
+    } else {
         hostname = cgroup_id;
+    }
     if (bridge_network && network_ip == NULL) {
         fprintf(stderr,
                 "vcontainer: --network bridge requires --ip ADDRESS\n");
@@ -620,8 +624,10 @@ int main(int argc, char **argv)
         .exec_fd = exec_pipe[1],
     };
 
-    for (size_t i = 0; i < seccomp_deny_count; ++i){
-        config.seccomp_denies[i] = seccomp_denies[i];
+    size_t sec_idx = 0;
+    while (sec_idx < seccomp_deny_count) {
+        config.seccomp_denies[sec_idx] = seccomp_denies[sec_idx];
+        sec_idx++;
     }
     for (size_t i = 0; i < volume_count; ++i) {
         config.volumes[i] = volumes[i];

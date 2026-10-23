@@ -100,6 +100,8 @@ def build(path):
 
 def run(name, image, command=None, memory=None, cpus=None, pids=None, port=None):
     core.valid_name(name); meta = core.read_meta(image)
+    try: remove(name)
+    except Exception: pass
     command = command or meta.get("cmd") or ["/bin/sh"]
     args = ["run", image, "--name", name, "--detach"]
     if memory: args += ["--memory-max", str(memory)]

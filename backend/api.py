@@ -62,7 +62,9 @@ class Handler(BaseHTTPRequestHandler):
                 os.unlink(t)
                 return self.send_json(201, r)
             parts = path.strip("/").split("/"); name = core.valid_name(parts[1])
-            if len(parts) == 2: return self.send_json(200, engine.run(name, engine._load()[name]["image"], engine._load()[name].get("command")))
+            if len(parts) == 2:
+                o = engine._load().get(name, {})
+                return self.send_json(200, engine.run(name, o.get("image", "alpine"), o.get("command"), port=(o.get("ports") or [None])[0]))
             if parts[2] == "stop": engine.stop(name); return self.send_json(200, engine.inspect(name))
             if parts[2] == "exec": return self.send_json(200, engine.execute(name, data["command"]))
             return self.fail("not found", "not_found", 404)
