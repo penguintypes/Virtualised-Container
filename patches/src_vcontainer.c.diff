@@ -1,0 +1,98 @@
+--- original/src/vcontainer.c
++++ merged/src/vcontainer.c
+@@ -25,6 +25,7 @@
+ #include <stddef.h>
+ 
+ #include <errno.h>
++#include <fcntl.h>
+ #include <sched.h>
+ #include <signal.h>
+ #include <stdbool.h>
+@@ -92,6 +93,7 @@
+     int log_fd;
+ 
+     const char *container_name;
++    int exec_fd;
+ };
+ 
+ static void die(const char *message)
+@@ -249,6 +251,11 @@
+     }
+ 
+     execvp(config->command[0], config->command);
++    int saved_errno = errno;
++    if (write(config->exec_fd, &saved_errno, sizeof(saved_errno)) !=
++        (ssize_t)sizeof(saved_errno)) {
++        /* The parent may have already abandoned the confirmation pipe. */
++    }
+     die("exec command");
+     _exit(127);
+ }
+@@ -342,7 +349,7 @@
+     const char *rootfs = NULL;
+     const char *image = NULL;
+     char image_rootfs[4096];
+-    const char *hostname = "vcontainer";
++    const char *hostname = NULL;
+     bool use_userns = true;
+     bool seccomp_enabled = false;
+     const char *seccomp_denies[MAX_SECCOMP_DENIES];
+@@ -490,7 +497,7 @@
+             return EXIT_FAILURE;
+         }
+ 
+-        if (snprintf(image_rootfs, sizeof(image_rootfs), "/tmp/vcontainer-images/%s/rootfs", image) >=
++        if (snprintf(image_rootfs, sizeof(image_rootfs), "/var/lib/vcontainer/images/%s/rootfs", image) >=
+             (int)sizeof(image_rootfs)) {
+                 fprintf(stderr,"vcontainer: image path is too long\n");
+                 return EXIT_FAILURE;
+@@ -517,6 +524,8 @@
+         return EXIT_FAILURE;
+     }
+ 
++    if (hostname == NULL)
++        hostname = cgroup_id;
+     if (bridge_network && network_ip == NULL) {
+         fprintf(stderr,
+                 "vcontainer: --network bridge requires --ip ADDRESS\n");
+@@ -559,7 +568,8 @@
+     }
+ 
+     int sync_pipe[2] = {-1, -1};
+-    if (pipe(sync_pipe) != 0) {
++    int exec_pipe[2] = {-1, -1};
++    if (pipe(sync_pipe) != 0 || pipe2(exec_pipe, O_CLOEXEC) != 0) {
+         die("create sync pipe");
+         return EXIT_FAILURE;
+     }
+@@ -607,6 +617,7 @@
+         .volume_count = volume_count,
+         .log_fd = log_fd,
+         .container_name = cgroup_id,
++        .exec_fd = exec_pipe[1],
+     };
+ 
+     for (size_t i = 0; i < seccomp_deny_count; ++i){
+@@ -626,6 +637,7 @@
+     }
+ 
+     close(sync_pipe[0]);
++    close(exec_pipe[1]);
+ 
+     bool child_ready = true;
+ 
+@@ -664,6 +676,14 @@
+     }
+ 
+     if (detach) {
++        int exec_errno = 0;
++        ssize_t exec_result = read(exec_pipe[0], &exec_errno, sizeof(exec_errno));
++        close(exec_pipe[0]);
++        if (exec_result > 0) {
++            errno = exec_errno;
++            die("exec command");
++            return EXIT_FAILURE;
++        }
+         printf("container %s started: host PID %ld\n",
+             cgroup_id, (long)child);
+         munmap(mapping, mapping_size);

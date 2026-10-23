@@ -1,0 +1,9 @@
+<!doctype html>
+<meta charset="utf-8"><title>vcontainer runner</title>
+<style>body{font:16px system-ui;max-width:70rem;margin:2rem auto;background:#17202a;color:#eef}textarea,pre{width:100%;min-height:14rem;box-sizing:border-box;padding:1rem;background:#10161d;color:#d8f3dc;border:1px solid #426}button,select{padding:.7rem;margin:.4rem 0}button{background:#e07a5f;color:white;border:0}</style>
+<h1>vcontainer runner</h1><select id="language"><option>python</option><option>node</option><option>c</option></select><textarea id="code">print("hello from vcontainer")</textarea><button onclick="run()">Run</button><pre id="output">Ready.</pre>
+<script>
+const $=x=>document.querySelector(x); let pending=false;
+async function run(){pending=true;$('#output').textContent='Running…';const r=await fetch('/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({language:$('#language').value,code:$('#code').value,stdin:''})});$('#output').textContent=JSON.stringify(await r.json(),null,2);pending=false}
+setInterval(()=>{if(pending)$('#output').dataset.poll=Date.now()},500)
+</script>

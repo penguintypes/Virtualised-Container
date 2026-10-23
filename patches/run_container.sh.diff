@@ -1,0 +1,159 @@
+--- original/run_container.sh
++++ merged/run_container.sh
+@@ -3,6 +3,7 @@
+ set -eu
+ 
+ project_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
++image_store=/var/lib/vcontainer/images
+ 
+ usage() {
+     echo "Usage:" >&2
+@@ -151,7 +152,7 @@
+             echo "Available images:"
+             printf "%-16s %s\n" "IMAGE" "ROOTFS"
+ 
+-            for image_dir in /tmp/vcontainer-images/*; do
++            for image_dir in /var/lib/vcontainer/images/*; do
+                 [ -d "$image_dir/rootfs" ] || continue
+                 printf "%-16s %s\n" \
+                 "$(basename "$image_dir")" \
+@@ -169,6 +170,9 @@
+         shift 2
+ 
+         resolved_args=()
++        publish_port=""
++        container_name=""
++        container_ip=""
+ 
+         while [ "$#" -gt 0 ]; do
+             case "$1" in
+@@ -176,6 +180,21 @@
+                     resolved_args+=("$@")
+                     break
+                     ;;
++                -p)
++                    [ "$#" -ge 2 ] || { echo "-p requires HOST:CONTAINER" >&2; exit 2; }
++                    publish_port="$2"
++                    case "$publish_port" in
++                        [0-9]*:[0-9]*) ;;
++                        *) echo "-p requires HOST:CONTAINER" >&2; exit 2 ;;
++                    esac
++                    shift 2
++                    ;;
++                --name)
++                    [ "$#" -ge 2 ] || { echo "--name requires NAME" >&2; exit 2; }
++                    container_name="$2"
++                    resolved_args+=("--name" "$2")
++                    shift 2
++                    ;;
+                 --volume)
+                     [ "$#" -ge 2 ] || {
+                         echo "--volume requires NAME:TARGET" >&2
+@@ -214,6 +233,15 @@
+             esac
+         done
+ 
++        if [ -n "$publish_port" ]; then
++            [ -n "$container_name" ] || { echo "-p requires --name" >&2; exit 2; }
++            case "$container_name" in
++                blog) container_ip=10.88.0.11 ;;
++                runner) container_ip=10.88.0.12 ;;
++                *) container_ip="10.88.0.$((10 + $(printf %s "$container_name" | cksum | awk "{print $1 % 200}")))" ;;
++            esac
++            resolved_args=(--network bridge --ip "$container_ip" "${resolved_args[@]}")
++        fi
+         set -- "${resolved_args[@]}"
+         ;;
+     delete)
+@@ -231,8 +259,8 @@
+             set -eu
+             image="$1"
+             sudo rm -rf -- \
+-                "/tmp/vcontainer-images/$image" \
+-                "/tmp/vcontainer-oci/$image"
++                "/var/lib/vcontainer/images/$image" \
++                "/var/lib/vcontainer/oci/$image"
+         ' vcontainer-delete "$image"
+         exit 0
+         ;;
+@@ -440,6 +468,18 @@
+             name="$1"
+             group="/sys/fs/cgroup/vcontainer/$name"
+             state_dir="/var/lib/vcontainer/containers/$name"
++            config="$state_dir/config"
++            if sudo test -f "$config"; then
++                port=$(sudo sed -n "s/^port=//p" "$config")
++                if [ -n "$port" ]; then
++                    host_port="${port%%:*}"
++                    container_port="${port##*:}"
++                    container_ip="10.88.0.$((10 + $(printf %s "$name" | cksum | awk "{print $1 % 200}")))"
++                    if sudo test -f "$state_dir/port.pid"; then
++                        sudo kill "$(sudo cat "$state_dir/port.pid")" 2>/dev/null || true
++                    fi
++                fi
++            fi
+ 
+             if [ -d "$group" ]; then
+                 pids=$(sudo cat "$group/cgroup.procs")
+@@ -450,6 +490,7 @@
+                     exit 1
+                 fi
+ 
++                sudo umount -l "/var/lib/vcontainer/containers/$name/overlay/merged" 2>/dev/null || true
+                 sudo rmdir "$group"
+             fi
+ 
+@@ -485,6 +526,14 @@
+             }
+ 
+             sudo sh -c '"'"'echo 1 > "$1/cgroup.kill"'"'"' sh "$group"
++            for attempt in $(seq 1 50); do
++                [ -s "$group/cgroup.procs" ] || break
++                sleep 0.1
++            done
++            if sudo test -f "/var/lib/vcontainer/containers/$name/port.pid"; then
++                sudo kill "$(sudo cat "/var/lib/vcontainer/containers/$name/port.pid")" 2>/dev/null || true
++            fi
++            sudo umount -l "/var/lib/vcontainer/containers/$name/overlay/merged" 2>/dev/null || true
+             sudo rmdir "$group"
+ 
+             echo "stopped: $name"
+@@ -527,7 +576,6 @@
+ 
+   cd "$work"
+   chmod 755 cgroup.sh image.sh network.sh
+-  make clean
+   make
+ ' vcontainer-build "$project_dir"
+ 
+@@ -536,11 +584,14 @@
+   set -eu
+ 
+   image="$1"
+-  shift
++  publish_port="$2"
++  container_name="$3"
++  container_ip="$4"
++  shift 4
+ 
+   cd /tmp/vcontainer-work
+ 
+-  rootfs="/tmp/vcontainer-images/$image/rootfs"
++  rootfs="/var/lib/vcontainer/images/$image/rootfs"
+ 
+   if ! sudo chroot "$rootfs" /bin/sh -c "exit 0"; then
+       echo "Image missing; pulling: $image"
+@@ -555,5 +606,11 @@
+   sudo ./build/vcontainer run \
+     --image "$image" \
+     "$@"
+-' vcontainer-run "$image" "$@"
+-
++  if [ -n "$publish_port" ]; then
++      host_port="${publish_port%%:*}"
++      container_port="${publish_port##*:}"
++      sudo socat "TCP-LISTEN:$host_port,fork,reuseaddr" "TCP:$container_ip:$container_port" >/var/lib/vcontainer/containers/$container_name/port.log 2>&1 &
++      printf "%s\n" "$!" | sudo tee "/var/lib/vcontainer/containers/$container_name/port.pid" >/dev/null
++      printf "port=%s\n" "$publish_port" | sudo tee -a "/var/lib/vcontainer/containers/$container_name/config" >/dev/null
++  fi
++' vcontainer-run "$image" "$publish_port" "$container_name" "$container_ip" "$@"

@@ -1,0 +1,5 @@
+FROM alpine
+RUN apk add --no-cache python3 nodejs gcc musl-dev
+COPY runner.py /opt/runner.py
+COPY index.html /opt/index.html
+CMD ["python3", "/opt/runner.py"]

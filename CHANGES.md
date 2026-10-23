@@ -1,0 +1,32 @@
+# Changes
+
+## Phase 1: engine patches
+
+The friend’s WSL launcher and C engine remain the execution authority; only the listed bug fixes and socat port forwarding were added.
+
+## Phase 2: adapter and API
+
+The old Python lifecycle runtime was removed from the merged design. The adapter translates API operations to the friend CLI and keeps only user-facing metadata locally.
+
+## Phase 3: sample images and dashboard
+
+Vcfile `RUN`, persisted `meta.json`, Alpine blog/runner images, the two sample UIs, and the vanilla dashboard were added.
+
+## Phase 4: installer and tests
+
+The WSL installer, PowerShell/NSIS launchers, verification checklist, no-root unit tests, and rootful integration script were added.
+
+## Engine patches
+
+- `engine/src/image.sh`: changed image and OCI stores from `/tmp` to `/var/lib/vcontainer` so the API and CLI share images.
+- `engine/run_container.sh`: lists all image directories, waits before cgroup removal, unmounts overlay state, avoids clean rebuilds, validates unknown commands, adds `-p` and socat cleanup.
+- `engine/src/vcontainer.c`: defaults hostname to the container name, uses the persistent image store, and confirms detached `execvp` through a CLOEXEC pipe.
+- `engine/vcontainer.py`: debug command output is opt-in.
+
+## Adapter and API
+
+`backend/engine.py` delegates lifecycle, limits, namespaces, logs, exec, and image import/pull work to the friend launcher. `backend/core.py` only parses Vcfiles and reads image metadata. `backend/api.py` is the only server and serves the dashboard.
+
+## Samples and UI
+
+The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments and Markdown preview, and the runner uses Python, Node, and C. Java was omitted to keep the sample image smaller. The dashboard supports run, start, stop, logs, delete, build, stats, and published-port links.

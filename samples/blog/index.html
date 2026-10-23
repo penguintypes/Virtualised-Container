@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8"><title>vcontainer blog</title>
+<style>body{font:16px system-ui;margin:2rem;background:#f5f1e8;color:#24313b}main{display:grid;grid-template-columns:1fr 1fr;gap:1rem}textarea,article{min-height:22rem;width:100%;box-sizing:border-box;padding:1rem;background:white;border:1px solid #ccd2d2}button{padding:.6rem 1rem;background:#176b87;color:white;border:0}small{color:#68757b}</style>
+<h1>vcontainer blog</h1><small>Alpine + Python + SQLite</small>
+<main><section><input id="name" value="welcome"><textarea id="edit"># Namespaces, not magic
+
+This post was built from a **Vcfile**.</textarea><button onclick="save()">Save post</button></section><article id="preview"></article></main>
+<script>
+const $=x=>document.querySelector(x); const render=s=>s.split('\n').map(x=>x.startsWith('# ')?'<h2>'+x.slice(2)+'</h2>':x.replace(/\*\*(.*?)\*\*/g,'<b>$1</b>')||'<br>').join('');
+async function poll(){try{const r=await fetch('/posts/'+encodeURIComponent($('#name').value));if(r.ok){$('#edit').value=await r.text();}}catch(e){} $('#preview').innerHTML=render($('#edit').value)}
+async function save(){await fetch('/posts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:$('#name').value,body:$('#edit').value})});poll()}
+$('#edit').oninput=()=>$('#preview').innerHTML=render($('#edit').value);poll();setInterval(poll,1000)
+</script>
