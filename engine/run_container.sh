@@ -317,7 +317,7 @@ case "$action" in
             if [ "$follow" = true ]; then
                 sudo tail -n +1 -f "$log"
             else
-                sudo cat "$log"
+                sudo tail -n 15 "$log"
             fi
         ' vcontainer-logs "$follow" "$name"
 

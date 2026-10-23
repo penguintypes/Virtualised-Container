@@ -5,6 +5,8 @@ from pathlib import Path
 ROOT = Path('/var/lib/vcontainer/blog'); ROOT.mkdir(parents=True, exist_ok=True)
 DB = ROOT / 'comments.db'; sqlite3.connect(DB).execute('create table if not exists comments(post text, author text, body text)').connection.commit()
 class H(BaseHTTPRequestHandler):
+ def log_message(self, f, *a):
+  if self.command != 'GET' or int(a[1]) >= 400: super().log_message(f, *a)
  def send(self, code, body, kind='text/html'):
   raw = body if isinstance(body, bytes) else body.encode(); self.send_response(code); self.send_header('Content-Type', kind); self.send_header('Content-Length', str(len(raw))); self.end_headers(); self.wfile.write(raw)
  def do_GET(self):
@@ -22,5 +24,5 @@ class H(BaseHTTPRequestHandler):
     return self.send(201, 'saved')
   except Exception as error: return self.send(400, str(error))
   self.send(404, 'not found')
- def log_message(self,*args): pass
+
 HTTPServer(('0.0.0.0',8081), H).serve_forever()
