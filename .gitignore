@@ -1,6 +1,7 @@
-var/
-.venv/
+install.exe
+var/engine.json
+.vcbuild.json
+*:Zone.Identifier
 __pycache__/
 *.pyc
-*:Zone.Identifier
-engine/build/
+verify.log

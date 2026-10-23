@@ -43,7 +43,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as error: self.fail(error)
     def static(self, name, content_type=None):
         file = (GUI / name).resolve()
-        if GUI not in file.parents: return self.fail("not found", "not_found", 404)
+        if not str(file).startswith(str(GUI.resolve())): return self.fail("not found", "not_found", 404)
         body = file.read_bytes(); self.send_response(200); self.send_header("Content-Type", content_type or mimetypes.guess_type(name)[0] or "text/plain"); self.end_headers(); self.wfile.write(body)
     def do_POST(self):
         path = urlparse(self.path).path; data = self.body()
@@ -78,5 +78,5 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as error: self.fail(error)
 
 def main():
-    ThreadingHTTPServer((os.getenv("VCONTAINER_HOST", "0.0.0.0"), int(os.getenv("VCONTAINER_PORT", "8080"))), Handler).serve_forever()
+    ThreadingHTTPServer((os.getenv("VCONTAINER_HOST", "127.0.0.1"), int(os.getenv("VCONTAINER_PORT", "8080"))), Handler).serve_forever()
 if __name__ == "__main__": main()

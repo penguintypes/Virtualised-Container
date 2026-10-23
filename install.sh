@@ -18,6 +18,8 @@ if [ "$root" != "$target" ]; then mkdir -p "$target"; cp -a "$root"/. "$target"/
 if [ -t 0 ]; then read -r -p 'Install personal-machine sudoers NOPASSWD rule for vcontainer? [y/N] ' answer; else answer=Y; fi
 if [[ ${answer:-N} =~ ^[Yy]$ ]]; then echo "$user ALL=(root) NOPASSWD: $root/engine/run_container.sh, /usr/bin/cp, /usr/bin/chroot, /usr/bin/tee, /usr/bin/mkdir, /usr/bin/socat, /usr/bin/kill, /usr/bin/install, /usr/bin/tar, /usr/bin/rm, /usr/bin/du" | sudo tee /etc/sudoers.d/vcontainer >/dev/null; sudo chmod 440 /etc/sudoers.d/vcontainer; fi
 if ! sudo test -d /var/lib/vcontainer/images/alpine/rootfs; then sudo "$root/engine/src/image.sh" pull alpine; fi
+sudo chmod -R a+rX /var/lib/vcontainer/images
+echo \'{"id":"alpine","name":"alpine","created":"2026-10-23T00:00:00Z","size":8427299,"cmd":["/bin/sh"],"env":{}}\' | sudo tee /var/lib/vcontainer/images/alpine/meta.json > /dev/null
 PYTHONPATH="$root" python3 - <<'PY'
 import os
 from backend import engine

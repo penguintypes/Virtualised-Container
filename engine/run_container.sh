@@ -634,6 +634,19 @@ bash -c '
         printf "port=%s\n" "$publish_port" | sudo tee -a "$d/config" >/dev/null
       ) &
   fi
+
+  cleanup() {
+      # 1. Kill port-forwarding if active
+      [ -n "${socat_pid:-}" ] && sudo kill "$socat_pid" 2>/dev/null || true
+      
+      # 2. Wait briefly for container processes to finish terminating
+      sleep 0.2
+      
+      # 3. Remove leftover cgroup directories (fails safely if already gone or not empty)
+      sudo rmdir "/sys/fs/cgroup/vcontainer/$container_name" 2>/dev/null || true
+      sudo rmdir "/sys/fs/cgroup/$container_name" 2>/dev/null || true
+  }
+  trap cleanup EXIT INT TERM
   sudo ./build/vcontainer run \
     --image "$image" \
     "$@"

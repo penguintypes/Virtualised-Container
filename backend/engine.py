@@ -68,7 +68,7 @@ from contextlib import contextmanager
 def _tmp():
     temp = tempfile.mkdtemp()
     try: yield temp
-    finally: subprocess.run(["sudo", "-n", "rm", "-rf", temp])
+    finally: subprocess.run(["sudo", "-n", "/home/ronnie/vcontainer-merged/engine/build_helper.sh", "rm", "-rf", temp])
 
 def build(path, clean=False, update=False):
     import json
@@ -83,18 +83,22 @@ def build(path, clean=False, update=False):
     live_rootfs = core.STORE / name / "rootfs"
     state_file = core.STORE / name / ".vcbuild.json"
     state = json.loads(state_file.read_text()) if state_file.exists() else ({"from": spec["from"], "run": spec["run"]} if live_rootfs.is_dir() else None)
+    try:
+        stop(name)
+    except Exception:
+        pass
     if live_rootfs.is_dir() and not clean and state and state.get("from") == spec["from"]:
         for source, target in spec["copy"]:
-            subprocess.run(["sudo", "-n", "install", "-D", "-m", "644", str(context / source), str(live_rootfs / target.lstrip("/"))], check=True)
+            subprocess.run(["sudo", "-n", "/home/ronnie/vcontainer-merged/engine/build_helper.sh", "install", "-D", "-m", "644", str(context / source), str(live_rootfs / target.lstrip("/"))], check=True)
         old_runs = state.get("run", [])
         new_runs = spec["run"] if update else [c for c in spec["run"] if c not in old_runs]
         if update or new_runs:
-            subprocess.run(["sudo", "-n", "tee", str(live_rootfs / "etc" / "resolv.conf")], input="nameserver 1.1.1.1\nnameserver 8.8.8.8\n", text=True, stdout=subprocess.DEVNULL, check=True)
+            subprocess.run(["sudo", "-n", "/home/ronnie/vcontainer-merged/engine/build_helper.sh", "tee", str(live_rootfs / "etc" / "resolv.conf")], input="nameserver 1.1.1.1\nnameserver 8.8.8.8\n", text=True, stdout=subprocess.DEVNULL, check=True)
             if update:
-                subprocess.run(["sudo", "-n", "chroot", str(live_rootfs), "/bin/sh", "-c", "apk update && apk upgrade"], check=False, timeout=300)
+                subprocess.run(["sudo", "-n", "/home/ronnie/vcontainer-merged/engine/build_helper.sh", "chroot", str(live_rootfs), "/bin/sh", "-c", "apk update && apk upgrade"], check=False, timeout=300)
             for command in new_runs:
-                subprocess.run(["sudo", "-n", "chroot", str(live_rootfs), "/bin/sh", "-c", command], check=True, timeout=300)
-        subprocess.run(["sudo", "-n", "tee", str(state_file)], input=json.dumps({"from": spec["from"], "run": spec["run"]}), text=True, stdout=subprocess.DEVNULL, check=True)
+                subprocess.run(["sudo", "-n", "/home/ronnie/vcontainer-merged/engine/build_helper.sh", "chroot", str(live_rootfs), "/bin/sh", "-c", command], check=True, timeout=300)
+        subprocess.run(["sudo", "-n", "/home/ronnie/vcontainer-merged/engine/build_helper.sh", "tee", str(state_file)], input=json.dumps({"from": spec["from"], "run": spec["run"]}), text=True, stdout=subprocess.DEVNULL, check=True)
     else:
         if spec["from"] != "scratch" and (clean or not (core.STORE / spec["from"] / "rootfs").is_dir()):
             if clean and (core.STORE / spec["from"] / "rootfs").is_dir():
@@ -105,23 +109,22 @@ def build(path, clean=False, update=False):
         with _tmp() as temp:
             rootfs = Path(temp) / "rootfs"; rootfs.mkdir()
             if spec["from"] != "scratch":
-                subprocess.run(["sudo", "-n", "cp", "-a", f"{core.STORE}/{spec['from']}/rootfs/.", str(rootfs)], check=True, timeout=60)
+                subprocess.run(["sudo", "-n", "/home/ronnie/vcontainer-merged/engine/build_helper.sh", "cp", "-a", f"{core.STORE}/{spec['from']}/rootfs/.", str(rootfs)], check=True, timeout=60)
             for source, target in spec["copy"]:
-                subprocess.run(["sudo", "-n", "install", "-D", "-m", "644", str(context / source), str(rootfs / target.lstrip("/"))], check=True)
-            subprocess.run(["sudo", "-n", "tee", str(rootfs / "etc" / "resolv.conf")], input="nameserver 1.1.1.1\nnameserver 8.8.8.8\n", text=True, stdout=subprocess.DEVNULL, check=True)
+                subprocess.run(["sudo", "-n", "/home/ronnie/vcontainer-merged/engine/build_helper.sh", "install", "-D", "-m", "644", str(context / source), str(rootfs / target.lstrip("/"))], check=True)
+            subprocess.run(["sudo", "-n", "/home/ronnie/vcontainer-merged/engine/build_helper.sh", "tee", str(rootfs / "etc" / "resolv.conf")], input="nameserver 1.1.1.1\nnameserver 8.8.8.8\n", text=True, stdout=subprocess.DEVNULL, check=True)
             for command in spec["run"]:
-                subprocess.run(["sudo", "-n", "chroot", str(rootfs), "/bin/sh", "-c", command], check=True, timeout=300)
+                subprocess.run(["sudo", "-n", "/home/ronnie/vcontainer-merged/engine/build_helper.sh", "chroot", str(rootfs), "/bin/sh", "-c", command], check=True, timeout=300)
             archive = Path(temp) / f"{name}.tar"
-            subprocess.run(["sudo", "-n", "tar", "-C", str(rootfs), "-cf", str(archive), *[i.name for i in rootfs.iterdir()]], check=True)
+            subprocess.run(["sudo", "-n", "/home/ronnie/vcontainer-merged/engine/build_helper.sh", "tar", "-C", str(rootfs), "-cf", str(archive), *[i.name for i in rootfs.iterdir()]], check=True)
             _call("delete", name, timeout=30)
             _call("import", name, str(archive), timeout=300)
-            subprocess.run(["sudo", "-n", "rm", "-rf", temp], check=True)
-        subprocess.run(["sudo", "-n", "tee", str(state_file)], input=json.dumps({"from": spec["from"], "run": spec["run"]}), text=True, stdout=subprocess.DEVNULL, check=True)
+        subprocess.run(["sudo", "-n", "/home/ronnie/vcontainer-merged/engine/build_helper.sh", "tee", str(state_file)], input=json.dumps({"from": spec["from"], "run": spec["run"]}), text=True, stdout=subprocess.DEVNULL, check=True)
     meta = {"id": name, "name": name, "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "size": 0, "cmd": spec["cmd"], "env": spec["env"]}
-    size = subprocess.run(["sudo", "-n", "du", "-sb", str(core.STORE / name / "rootfs")], capture_output=True, text=True, check=True)
+    size = subprocess.run(["sudo", "-n", "/home/ronnie/vcontainer-merged/engine/build_helper.sh", "du", "-sb", str(core.STORE / name / "rootfs")], capture_output=True, text=True, check=True)
     meta["size"] = int(size.stdout.split()[0])
-    subprocess.run(["sudo", "-n", "mkdir", "-p", str(core.STORE / name)], check=True)
-    subprocess.run(["sudo", "-n", "tee", str(core.STORE / name / "meta.json")], input=json.dumps(meta), text=True, check=True, stdout=subprocess.DEVNULL)
+    subprocess.run(["sudo", "-n", "/home/ronnie/vcontainer-merged/engine/build_helper.sh", "mkdir", "-p", str(core.STORE / name)], check=True)
+    subprocess.run(["sudo", "-n", "/home/ronnie/vcontainer-merged/engine/build_helper.sh", "tee", str(core.STORE / name / "meta.json")], input=json.dumps(meta), text=True, check=True, stdout=subprocess.DEVNULL)
     return meta
 
 def run(name, image, command=None, memory=None, cpus=None, pids=None, port=None):
@@ -172,15 +175,15 @@ def _number(value):
 def export_image(name):
     core.valid_name(name)
     a = Path(tempfile.mkdtemp()) / f"{name}.tar"
-    subprocess.run(["sudo", "-n", "tar", "-C", f"{core.STORE}/{name}/rootfs", "-cf", str(a), "."], check=True)
+    subprocess.run(["sudo", "-n", "/home/ronnie/vcontainer-merged/engine/build_helper.sh", "tar", "-C", f"{core.STORE}/{name}/rootfs", "-cf", str(a), "."], check=True)
     return a
 
 def upload_image(name, path):
     core.valid_name(name)
     _call("import", name, path, timeout=300)
     m = {"id": name, "name": name, "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "size": 0}
-    s = subprocess.run(["sudo", "-n", "du", "-sb", f"{core.STORE}/{name}/rootfs"], capture_output=True, text=True, check=True)
+    s = subprocess.run(["sudo", "-n", "/home/ronnie/vcontainer-merged/engine/build_helper.sh", "du", "-sb", f"{core.STORE}/{name}/rootfs"], capture_output=True, text=True, check=True)
     m["size"] = int(s.stdout.split()[0])
-    subprocess.run(["sudo", "-n", "mkdir", "-p", f"{core.STORE}/{name}"], check=True)
-    subprocess.run(["sudo", "-n", "tee", f"{core.STORE}/{name}/meta.json"], input=json.dumps(m), text=True, check=True, stdout=subprocess.DEVNULL)
+    subprocess.run(["sudo", "-n", "/home/ronnie/vcontainer-merged/engine/build_helper.sh", "mkdir", "-p", f"{core.STORE}/{name}"], check=True)
+    subprocess.run(["sudo", "-n", "/home/ronnie/vcontainer-merged/engine/build_helper.sh", "tee", f"{core.STORE}/{name}/meta.json"], input=json.dumps(m), text=True, check=True, stdout=subprocess.DEVNULL)
     return m

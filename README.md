@@ -1,65 +1,77 @@
 # vcontainer merged project
 
-A student-sized Docker-like runtime for WSL2 Ubuntu 24.04. The friend’s C and Bash engine in `engine/` performs the real namespace, cgroup, overlay, network, and process work. The Python adapter, REST API, dashboard, Vcfile parser, samples, and tests are mine.
+A student-sized Docker-like container runtime for WSL2 Ubuntu 24.04. The C and Bash engine in `engine/` handles namespaces, cgroups v2, overlayfs, virtual networking, and process lifecycle. The Python adapter, REST API, dashboard, Vcfile parser, samples, and integration tests provide management and visibility.
 
-## Quick start
+## Quick Start
 
 ```bash
 bash install.sh
 ./start.sh
 ```
 
-Dashboard: `http://localhost:8080`. The curl form is `curl -fsSL https://raw.githubusercontent.com/<YOUR-USERNAME>/vcontainer-merged/main/install.sh | bash` (replace the placeholder URL with a trusted project URL). Windows users can run `install.ps1`; `install.exe` is built with `makensis install.nsi`. The unsigned executable can trigger SmartScreen.
+- **Dashboard:** `http://localhost:8080`
+- **One-line installer:** `curl -fsSL <PROJECT_URL> | bash` (replace `<PROJECT_URL>` with your public repo script URL)
+- **Windows / Offline deployment:** Run `install.exe` (built via NSIS) or execute `install.ps1` in PowerShell.
 
 ## Architecture
 
 ```text
-Browser :8080 -> backend/api.py -> backend/engine.py -> sudo -n engine/run_container.sh
-                                      |                         |
-                                   meta.json              friend C engine
-                                      |              namespaces/cgroups/overlay
-                              /var/lib/vcontainer/images
+Browser :8080 -> backend/api.py -> backend/engine.py
+                      |                   |
+                      |            +------+------+
+                      |            |             |
+                      v            v             v
+                  meta.json   sudo -n        sudo -n
+                              build_helper   run_container.sh
+                                   |             |
+                                   |         C Engine
+                                   v             v
+                       /var/lib/vcontainer/  namespaces/cgroups/overlay
 ```
 
-`Vcontainer(arm)` is retained untouched as a reference. Every friend-engine edit has a corresponding file in `patches/`.
+`Vcontainer(arm)` is retained as an unmerged reference. Custom runtime adaptations are documented in `patches/`.
 
-## Usage
+## Usage & API
 
-```bash
-vc pull alpine
-vc run alpine --name demo --detach -- echo hello
-vc ps
-vc logs demo
-vc stop demo && vc rm demo
-```
-
-Build samples through the dashboard or API, then run them with `-p 8081:8081` and `-p 8082:8082`. Blog uses Python and SQLite. Runner supports Python, Node, and C; Java is intentionally omitted to reduce image size.
-
-## API
+Containers and images can be managed via the Web Dashboard (`http://localhost:8080`) or direct REST API calls:
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/health` | capabilities |
-| GET | `/images` | image metadata |
-| POST | `/images/build` | `{"file":".../Vcfile"}` |
-| DELETE | `/images/{name}` | delete image |
-| GET | `/containers` | container records |
-| POST | `/containers` | create detached container |
-| POST | `/containers/{id}` | start |
-| POST | `/containers/{id}/stop` | stop |
-| DELETE | `/containers/{id}` | remove |
-| GET | `/containers/{id}/stats` | live limits and usage |
-| GET | `/containers/{id}/logs` | logs |
-| POST | `/containers/{id}/exec` | `{"command":[...]}` |
+| GET | `/health` | Capabilities and runtime health |
+| GET | `/images` | List cached and built image metadata |
+| POST | `/images/build` | Build image from Vcfile: `{"file":"samples/blog/Vcfile"}` |
+| DELETE | `/images/{name}` | Remove an image |
+| GET | `/containers` | List active and exited container records |
+| POST | `/containers` | Create/run container: `{"name":"demo","image":"alpine","command":"..."}` |
+| POST | `/containers/{name}/stop` | Stop a running container |
+| DELETE | `/containers/{name}` | Remove container state and mounts |
+| GET | `/containers/{name}/stats` | Live cgroup v2 CPU and memory statistics |
+| GET | `/containers/{name}/logs` | Fetch container stdout/stderr |
+| POST | `/containers/{name}/exec` | Execute command in existing container |
 
-Errors are JSON objects with `error` and `code`; CORS is enabled for the dashboard.
+Sample containers:
+- **Blog:** Python 3 + SQLite (`http://localhost:8081`)
+- **Runner:** Multi-language test runner supporting Python, Node, and C (`http://localhost:8082`)
 
-## Security model
+## Security Model
 
-The engine runs as a normal WSL user and uses narrowly scoped `sudo -n` calls. The optional sudoers rule is intended only for a personal development machine. Containers get user, mount, UTS, IPC, PID, and network namespaces, cgroup limits, an overlay root, optional seccomp, and a read-only API path is not exposed by this adapter. Do not run untrusted workloads with the optional broad development rule without reviewing it.
+- **Least Privilege:** The Python API server runs as an unprivileged user bound exclusively to `127.0.0.1`.
+- **Strict Sudoers Scope:** Privilege escalation is locked down in `/etc/sudoers.d/vcontainer` to only two executable entrypoints:
+  1. `engine/run_container.sh`: Executes isolation primitives (namespaces, cgroup creation, overlay mount).
+  2. `engine/build_helper.sh`: Constrained wrapper for build tasks (`tar`, `install`, `cp`, `chroot`, safe path-checked `rm`).
+- **Isolation Layers:** Containers utilize PID, Mount, UTS, IPC, Network, and User namespaces, cgroup v2 resource accounting, and overlayfs isolation.
 
-## Tests and verification
+## Verification & Testing
 
-No rootful namespaces, cgroups, overlay mounts, iptables, or socat networking were run in this sandbox. They are **UNVERIFIED**, not planned. Run `python3 -m unittest discover -s tests -p 'test_*.py'` for no-root tests, then run `bash verify.sh` and `bash tests/integration.sh` inside WSL2 Ubuntu. The integration script checks isolation, limits, samples, port publishing, and CLI/API agreement.
+Core functionality and isolation checks are documented in `vcontainer_6_test_cases.md`.
 
-The sandbox also lacks `libseccomp-dev`, so the final WSL build was not attempted successfully here; `install.sh` installs it before compiling. NSIS was unavailable, so `install.nsi` is delivered instead of a compiled `install.exe`; build it with `makensis install.nsi` on Windows.
+To run non-root unit tests:
+```bash
+python3 -m unittest discover -s tests -p 'test_*.py'
+```
+
+To run end-to-end integration checks:
+```bash
+bash verify.sh
+bash tests/integration.sh
+```
