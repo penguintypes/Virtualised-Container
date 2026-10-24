@@ -21,8 +21,7 @@
 
         <div class="logo">
             <h2>Blog<span>Drop</span></h2>
-            <p>Drop your blog or drop your ass.
-                Your Choice
+            <p>Turn your thoughts into words
             </p>
         </div>
 
@@ -46,9 +45,91 @@
 
     </aside>
 
+<div class="auth-topbar">
+    <div class="auth-welcome">
+        <strong>Welcome to BlogDrop</strong>
+        <span id="authStatus">You are browsing as a guest</span>
+    </div>
+
+    <div class="auth-actions">
+        <button id="loginBtn" class="auth-btn">
+            Login
+        </button>
+
+        <button id="registerBtn" class="auth-btn auth-primary">
+            Register
+        </button>
+
+        <button id="logoutBtn" class="auth-btn" hidden>
+            Logout
+        </button>
+    </div>
+</div>
+
+<!-- Login and Registration Forms -->
+<section id="authForms" class="auth-forms" hidden>
+
+    <!-- Registration Form -->
+    <div id="registerForm" class="auth-card" hidden>
+        <h2>Create an Account</h2>
+        <p>Join BlogDrop today!</p>
+
+        <form id="registerFormElement">
+            <label for="registerUsername">Username</label>
+            <input id="registerUsername" name="username"
+                   type="text" maxlength="50" required>
+
+            <label for="registerEmail">Email</label>
+            <input id="registerEmail" name="email"
+                   type="email" required>
+
+            <label for="registerPassword">Password</label>
+            <input id="registerPassword" name="password"
+                   type="password" minlength="8" required>
+
+            <button type="submit" class="primary-btn">
+                Create Account
+            </button>
+            <button type="button" id="rcloseAuthBtn" class="back-btn">
+                Cancel
+            </button>
+             
+        </form>
+    </div>
+
+    <!-- Login Form -->
+    <div id="loginForm" class="auth-card" hidden>
+        <h2>Welcome Back</h2>
+        <p>Log in to your BlogDrop account.</p>
+
+        <form id="loginFormElement">
+            <label for="loginEmail">Email</label>
+            <input id="loginEmail" name="email"
+                   type="email" required>
+
+            <label for="loginPassword">Password</label>
+            <input id="loginPassword" name="password"
+                   type="password" required>
+
+            <button type="submit" class="primary-btn">
+                Login
+            </button>
+            <button type="button" id="lcloseAuthBtn" class="back-btn">
+                Cancel
+            </button>
+        </form>
+      
+    </div>
+
+    <p id="authMessage" role="status"></p>
+
+    
+</section>
+
+
     <main class="main-content">
 
-        <section id="dashboard" class="page active">
+    <section id="dashboard" class="page active">
 
             <div class="page-header">
                 <div>
@@ -274,6 +355,10 @@
 
 
     <script src="script.js"></script>
+
+
+    
+
 
 </body>
 
