@@ -1,86 +1,189 @@
-import mimetypes
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import unquote, urlparse
 import json
 import os
+import mimetypes
+import tempfile
+import subprocess
 from pathlib import Path
+from urllib.parse import urlparse
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
 from . import core, engine
 
-GUI = Path(__file__).resolve().parents[1] / "gui"
-class Handler(BaseHTTPRequestHandler):
-    def send_json(self, code, value=None):
-        body = b"" if value is None else json.dumps(value).encode()
+# resolve gui folder once, remember it's 2 levels up
+GUI_DIR = Path(__file__).resolve().parents[1] / "gui"
+
+class VcApiHandler(BaseHTTPRequestHandler):
+    
+    def respond_with_json(self, status_code, payload=None):
+        resp_body = b"" if payload is None else json.dumps(payload).encode()
         try:
-            self.send_response(code); self.send_header("Content-Type", "application/json")
-            self.send_header("Access-Control-Allow-Origin", "http://localhost:8080"); self.send_header("Access-Control-Allow-Headers", "Content-Type")
-            self.send_header("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS"); self.end_headers(); self.wfile.write(body)
-        except (BrokenPipeError, ConnectionResetError): pass
-    def body(self):
-        return json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
-    def fail(self, error, code="bad_request", status=400):
-        if isinstance(error, (BrokenPipeError, ConnectionResetError)): return
-        self.send_json(status, {"error": str(error), "code": code})
-    def do_OPTIONS(self): self.send_json(204)
-    def do_HEAD(self):
-        if urlparse(self.path).path in ("/", "/index.html"):
-            self.send_response(200); self.send_header("Content-Type", "text/html"); self.end_headers()
-        else: self.send_response(404); self.end_headers()
-    def do_GET(self):
-        path = urlparse(self.path).path
-        try:
-            if path in ("/", "/index.html"): return self.send_json(200, None) if False else self.static("index.html", "text/html")
-            if path.startswith("/static/"): return self.static(path[8:])
-            if path == "/health": return self.send_json(200, {"ok": True, "capabilities": engine.capabilities()})
-            if path == "/images": return self.send_json(200, engine.images())
-            if path == "/containers": return self.send_json(200, engine.containers())
-            parts = path.strip("/").split("/")
-            if len(parts) == 2 and parts[0] == "containers": return self.send_json(200, engine.inspect(core.valid_name(parts[1])))
-            if len(parts) == 3 and parts[0] == "containers" and parts[2] == "stats": return self.send_json(200, engine.stats(core.valid_name(parts[1])))
-            if len(parts) == 3 and parts[0] == "containers" and parts[2] == "logs": return self.send_json(200, engine.logs(core.valid_name(parts[1])))
-            if len(parts) == 3 and parts[0] == "images" and parts[2] == "download":
-                import subprocess
-                a = engine.export_image(core.valid_name(parts[1]))
-                b = a.read_bytes()
-                subprocess.run(["sudo", "-n", "rm", "-rf", str(a.parent)])
-                self.send_response(200); self.send_header("Content-Type", "application/x-tar"); self.end_headers(); self.wfile.write(b); return
-            return self.fail("not found", "not_found", 404)
-        except Exception as error: self.fail(error)
-    def static(self, name, content_type=None):
-        file = (GUI / name).resolve()
-        if not str(file).startswith(str(GUI.resolve())): return self.fail("not found", "not_found", 404)
-        body = file.read_bytes(); self.send_response(200); self.send_header("Content-Type", content_type or mimetypes.guess_type(name)[0] or "text/plain"); self.end_headers(); self.wfile.write(body)
-    def do_POST(self):
-        path = urlparse(self.path).path; data = self.body()
-        try:
-            if path == "/containers":
-                name = core.valid_name(data.get("name") or data["image"] + "-" + str(os.getpid()))
-                port = data.get("port") or ((data.get("ports") or [None])[0])
-                return self.send_json(201, engine.run(name, data["image"], data.get("command"), data.get("memory"), data.get("cpus"), data.get("pids"), port))
-            if path == "/images/build": return self.send_json(201, engine.build(data["file"], clean=data.get("clean", False), update=data.get("update", False)))
-            if len(path.strip("/").split("/")) == 3 and path.strip("/").split("/")[0] == "images" and path.strip("/").split("/")[2] == "upload":
-                import tempfile, os
-                n = core.valid_name(path.strip("/").split("/")[1])
-                d = self.rfile.read(int(self.headers.get("Content-Length", 0)))
-                with tempfile.NamedTemporaryFile(delete=False) as f: f.write(d); t = f.name
-                r = engine.upload_image(n, t)
-                os.unlink(t)
-                return self.send_json(201, r)
-            parts = path.strip("/").split("/"); name = core.valid_name(parts[1])
-            if len(parts) == 2:
-                o = engine._load().get(name, {})
-                return self.send_json(200, engine.run(name, o.get("image", "alpine"), o.get("command"), port=(o.get("ports") or [None])[0]))
-            if parts[2] == "stop": engine.stop(name); return self.send_json(200, engine.inspect(name))
-            if parts[2] == "exec": return self.send_json(200, engine.execute(name, data["command"]))
-            return self.fail("not found", "not_found", 404)
-        except Exception as error: self.fail(error)
+            self.send_response(status_code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "http://localhost:8080")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS")
+            self.end_headers()
+            self.wfile.write(resp_body)
+        except (BrokenPipeError, ConnectionResetError):
+            # finally fixed the stupid broken pipe crash here
+            pass
+
+    def fail_out(self, err, err_code="bad_request", code=400):
+        if isinstance(err, (BrokenPipeError, ConnectionResetError)):
+            return
+        self.respond_with_json(code, {"error": str(err), "code": err_code})
+
+    def do_OPTIONS(self):
+        self.respond_with_json(204)
+
     def do_DELETE(self):
         try:
-            parts = self.path.strip("/").split("/")
-            if len(parts) == 2 and parts[0] == "containers": engine.remove(core.valid_name(parts[1])); return self.send_json(204)
-            if len(parts) == 2 and parts[0] == "images": engine._call("delete", core.valid_name(parts[1])); return self.send_json(204)
-            self.fail("not found", "not_found", 404)
-        except Exception as error: self.fail(error)
+            url_chunks = self.path.strip("/").split("/")
+            # container deletion
+            if len(url_chunks) == 2 and url_chunks[0] == "containers":
+                engine.remove(core.valid_name(url_chunks[1]))
+                return self.respond_with_json(204)
+            
+            # image deletion
+            if len(url_chunks) == 2 and url_chunks[0] == "images":
+                engine._call("delete", core.valid_name(url_chunks[1]))
+                return self.respond_with_json(204)
+            
+            self.fail_out("not found", "not_found", 404)
+        except Exception as e:
+            self.fail_out(e)
+
+    def do_POST(self):
+        parsed = urlparse(self.path)
+        
+        # read the body directly here since we only need it for POST
+        content_len = int(self.headers.get("Content-Length", 0))
+        raw_data = self.rfile.read(content_len) if content_len > 0 else b"{}"
+        req_data = json.loads(raw_data)
+
+        try:
+            if parsed.path == "/containers":
+                # hacky fallback for name using pid
+                c_name = core.valid_name(req_data.get("name") or req_data["image"] + "-" + str(os.getpid()))
+                
+                # getting port from old array or new string
+                c_port = req_data.get("port")
+                if not c_port and req_data.get("ports"):
+                    c_port = req_data["ports"][0]
+                    
+                res = engine.run(c_name, req_data["image"], req_data.get("command"), req_data.get("memory"), req_data.get("cpus"), req_data.get("pids"), c_port)
+                return self.respond_with_json(201, res)
+            
+            if parsed.path == "/images/build":
+                return self.respond_with_json(201, engine.build(req_data["file"], clean=req_data.get("clean", False), update=req_data.get("update", False)))
+            
+            url_chunks = parsed.path.strip("/").split("/")
+            
+            # upload handling
+            if len(url_chunks) == 3 and url_chunks[0] == "images" and url_chunks[2] == "upload":
+                img_name = core.valid_name(url_chunks[1])
+                
+                # kinda ugly but it writes the tar to a temp file then loads it
+                with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+                    tmp_file.write(raw_data)
+                    tmp_path = tmp_file.name
+                
+                upload_res = engine.upload_image(img_name, tmp_path)
+                os.unlink(tmp_path)
+                return self.respond_with_json(201, upload_res)
+            
+            target_name = core.valid_name(url_chunks[1])
+            
+            if len(url_chunks) == 2:
+                # just load and run
+                obj = engine._load().get(target_name, {})
+                old_port = (obj.get("ports") or [None])[0]
+                return self.respond_with_json(200, engine.run(target_name, obj.get("image", "alpine"), obj.get("command"), port=old_port))
+            
+            if url_chunks[2] == "stop":
+                engine.stop(target_name)
+                return self.respond_with_json(200, engine.inspect(target_name))
+            
+            if url_chunks[2] == "exec":
+                return self.respond_with_json(200, engine.execute(target_name, req_data["command"]))
+            
+            return self.fail_out("not found", "not_found", 404)
+        except Exception as e:
+            self.fail_out(e)
+
+    def do_GET(self):
+        parsed_path = urlparse(self.path).path
+        try:
+            if parsed_path in ("/", "/index.html"):
+                # quick shortcut for dashboard
+                return self.serve_gui("index.html", "text/html")
+            
+            if parsed_path.startswith("/static/"):
+                return self.serve_gui(parsed_path[8:])
+            
+            if parsed_path == "/health":
+                return self.respond_with_json(200, {"ok": True, "capabilities": engine.capabilities()})
+            
+            if parsed_path == "/images":
+                return self.respond_with_json(200, engine.images())
+            
+            if parsed_path == "/containers":
+                return self.respond_with_json(200, engine.containers())
+            
+            url_chunks = parsed_path.strip("/").split("/")
+            
+            if len(url_chunks) == 2 and url_chunks[0] == "containers":
+                return self.respond_with_json(200, engine.inspect(core.valid_name(url_chunks[1])))
+            
+            if len(url_chunks) == 3 and url_chunks[0] == "containers" and url_chunks[2] == "stats":
+                return self.respond_with_json(200, engine.stats(core.valid_name(url_chunks[1])))
+            
+            if len(url_chunks) == 3 and url_chunks[0] == "containers" and url_chunks[2] == "logs":
+                return self.respond_with_json(200, engine.logs(core.valid_name(url_chunks[1])))
+            
+            if len(url_chunks) == 3 and url_chunks[0] == "images" and url_chunks[2] == "download":
+                img_tar = engine.export_image(core.valid_name(url_chunks[1]))
+                tar_bytes = img_tar.read_bytes()
+                subprocess.run(["sudo", "-n", "rm", "-rf", str(img_tar.parent)])
+                self.send_response(200)
+                self.send_header("Content-Type", "application/x-tar")
+                self.end_headers()
+                self.wfile.write(tar_bytes)
+                return
+            
+            return self.fail_out("not found", "not_found", 404)
+        except Exception as e:
+            self.fail_out(e)
+
+    def serve_gui(self, filename, mime_type=None):
+        # safely serve gui files
+        target_file = (GUI_DIR / filename).resolve()
+        if not str(target_file).startswith(str(GUI_DIR.resolve())):
+            return self.fail_out("not found", "not_found", 404)
+        
+        body = target_file.read_bytes()
+        self.send_response(200)
+        
+        resolved_mime = mime_type or mimetypes.guess_type(filename)[0] or "text/plain"
+        self.send_header("Content-Type", resolved_mime)
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_HEAD(self):
+        if urlparse(self.path).path in ("/", "/index.html"):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.end_headers()
+        else:
+            self.send_response(404)
+            self.end_headers()
+
 
 def main():
-    ThreadingHTTPServer((os.getenv("VCONTAINER_HOST", "127.0.0.1"), int(os.getenv("VCONTAINER_PORT", "8080"))), Handler).serve_forever()
-if __name__ == "__main__": main()
+    bind_host = os.getenv("VCONTAINER_HOST", "127.0.0.1")
+    bind_port = int(os.getenv("VCONTAINER_PORT", "8080"))
+    # finally start the server
+    ThreadingHTTPServer((bind_host, bind_port), VcApiHandler).serve_forever()
+
+if __name__ == "__main__":
+    main()
