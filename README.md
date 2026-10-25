@@ -1,6 +1,6 @@
 # vcontainer merged project
 
-A student-sized Docker-like container runtime for WSL2 Ubuntu 24.04. The C and Bash engine in `engine/` handles namespaces, cgroups v2, overlayfs, virtual networking, and process lifecycle. The Python adapter, REST API, dashboard, Vcfile parser, samples, and integration tests provide management and visibility.
+A student-sized Docker-like container runtime for WSL2 Ubuntu (tested on 26.04). The C and Bash engine in `engine/` handles namespaces, cgroups v2, overlayfs, virtual networking, and process lifecycle. The Python adapter, REST API, dashboard, Vcfile parser, samples, and integration tests provide management and visibility.
 
 ## Quick Start
 
@@ -10,7 +10,7 @@ bash install.sh
 ```
 
 - **Dashboard:** `http://localhost:8080`
-- **One-line installer:** `curl -fsSL <PROJECT_URL> | bash` (replace `<PROJECT_URL>` with your public repo script URL)
+- **One-line installer:** `curl -fsSL https://raw.githubusercontent.com/penguintypes/Virtualised-Container/parzivalSr-test/install.sh | bash`
 - **Windows / Offline deployment:** Run `install.exe` (built via NSIS) or execute `install.ps1` in PowerShell.
 
 ## Architecture
@@ -56,7 +56,7 @@ Sample containers:
 ## Security Model
 
 - **Least Privilege:** The Python API server runs as an unprivileged user bound exclusively to `127.0.0.1`.
-- **Strict Sudoers Scope:** Privilege escalation is locked down in `/etc/sudoers.d/vcontainer` to only two executable entrypoints:
+- **Strict Sudoers Scope:** Privilege escalation is locked down in `/etc/sudoers.d/vcontainer` to two root-owned scripts in `/usr/local/libexec/vcontainer/`. Edits to `engine/*.sh` take effect only after `sudo install -o root -g root -m 755 engine/<file> /usr/local/libexec/vcontainer/<file>`:
   1. `engine/run_container.sh`: Executes isolation primitives (namespaces, cgroup creation, overlay mount).
   2. `engine/build_helper.sh`: Constrained wrapper for build tasks (`tar`, `install`, `cp`, `chroot`, safe path-checked `rm`).
 - **Isolation Layers:** Containers utilize PID, Mount, UTS, IPC, Network, and User namespaces, cgroup v2 resource accounting, and overlayfs isolation.
