@@ -40,3 +40,4 @@ The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments
 - docs: README installer URL set to the raw install.sh link, Ubuntu version and root-owned deploy rule documented
 - fix: install.sh wrote alpine meta.json with escaped quotes, which made the file invalid JSON
 - fix: install.sh asks for the sudoers NOPASSWD rule via /dev/tty when piped (curl | bash); defaults to no when there is no terminal, VC_SUDOERS=y overrides
+- fix: backend/engine.py run() accepts command as a string (shlex.split) as well as a list; string form raised bad_request
