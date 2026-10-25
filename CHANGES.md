@@ -61,3 +61,4 @@ The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments
 - docs: ARCHITECTURE.md names run_container.sh instead of a stray backticked phrase
 - fix: run_container.sh no longer compiles the C engine into /tmp/vcontainer-work on every start; only the .sh helpers are copied there
 - fix: install.nsi uses ExecWait so sudo can prompt, and excludes .git, install.exe and engine-arm from the bundle; install.ps1 honors VC_DISTRO, stops if install.sh fails, and waits for :8080 instead of sleeping 12 s (untested on Windows)
+- fix: install.ps1 converts backslashes to slashes and strips the \\wsl.localhost prefix before calling bash; tested by running it from PowerShell (install.exe and C:\ paths still untested)
