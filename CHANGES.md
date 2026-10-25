@@ -50,3 +50,4 @@ The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments
 - feat: grouped run actions into a split-button dropdown in GUI
 - feat: added incremental build cache checkboxes to GUI
 - fix: corrected GUI dropdown CSS inline override to restore toggle visibility
+- fix: engine.remove catches rm exceptions to prevent ghost containers

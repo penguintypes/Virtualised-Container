@@ -162,7 +162,9 @@ def stop(name):
 def remove(name):
     try: _call("stop", name)
     except Exception: pass
-    _call("rm", name); data = _load(); data.pop(name, None); _save(data)
+    try: _call("rm", name)
+    except Exception: pass
+    data = _load(); data.pop(name, None); _save(data)
 
 def logs(name): return {"logs": _call("logs", name)}
 def execute(name, command):
