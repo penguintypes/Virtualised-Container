@@ -58,3 +58,4 @@ The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments
 - chore: removed duplicated JS/CSS blocks in gui/app.js and gui/style.css
 - chore: removed fix_install.py, fix_dropdown.py, cleanup.py, vcontainer-source-dump.txt, and install.exe
 - fix: gui show() replaces the view with 'Failed to load <kind>: <error>' when a request fails, so no stale container list remains
+- docs: ARCHITECTURE.md names run_container.sh instead of a stray backticked phrase
