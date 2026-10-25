@@ -12,5 +12,27 @@ async function stopC(id){try{await api('/containers/'+id+'/stop',{method:'POST'}
 async function deleteC(id){if(confirm('Delete this container?'))try{await api('/containers/'+id,{method:'DELETE'});show('containers')}catch(e){toast(e.message)}}
 async function logsC(id){try{$('#logtext').textContent=(await api('/containers/'+id+'/logs')).logs;logs.showModal()}catch(e){toast(e.message)}}
 async function deleteImage(name){if(confirm('Delete '+name+'?'))try{await api('/images/'+name,{method:'DELETE'});show('images')}catch(e){toast(e.message)}}
-async function buildImage(){const file=prompt('Path to Vcfile inside this WSL project:','samples/blog/Vcfile');if(!file)return;try{await api('/images/build',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file})});toast('Image built');show('images')}catch(e){toast(e.message)}}
+async function buildImage(){const file=prompt('Path to Vcfile inside this WSL project:','samples/blog/Vcfile');if(!file)return;try{await api('/images/build',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file, clean: confirm('Bypass cache (--clean)?'), update: confirm('Force base image update (--update)?')})});toast('Image built');show('images')}catch(e){toast(e.message)}}
 boot();
+async function quickRun(img, port) {
+    try {
+        await api('/containers', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({image: img, name: img, port: port})
+        });
+        toast(img + ' started');
+        show('containers');
+    } catch(e) { toast(e.message); }
+}
+async function quickRun(img, port) {
+    try {
+        await api('/containers', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({image: img, name: img, port: port})
+        });
+        toast(img + ' started');
+        show('containers');
+    } catch(e) { toast(e.message); }
+}

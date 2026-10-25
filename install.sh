@@ -32,10 +32,12 @@ PYTHONPATH="$root" python3 - <<'PY'
 import os
 from backend import engine
 root = os.environ.get("PYTHONPATH", ".")
-try: engine.upload_image("blog", os.path.join(root, "samples/blog/blog.tar"))
-except RuntimeError: pass
-try: engine.upload_image("runner", os.path.join(root, "samples/runner/runner.tar"))
-except RuntimeError: pass
+try: engine._call("delete", "blog")
+except Exception: pass
+try: engine._call("delete", "runner")
+except Exception: pass
+engine.build(os.path.join(root, "samples/blog/Vcfile"))
+engine.build(os.path.join(root, "samples/runner/Vcfile"))
 PY
 sudo tee /usr/local/bin/vc >/dev/null <<EOF
 #!/usr/bin/env bash
