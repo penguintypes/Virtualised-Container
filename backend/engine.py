@@ -73,10 +73,11 @@ def _tmp():
 
 def build(path, clean=False, update=False):
     import json
-    parts = str(path).split()
-    clean = clean or ("--clean" in parts)
-    update = update or ("--update" in parts)
-    path = [x for x in parts if not x.startswith("--")][0]
+    import re
+    flags = re.findall(r"\s--(clean|update)\b", " " + str(path))
+    clean = clean or "clean" in flags
+    update = update or "update" in flags
+    path = re.sub(r"\s+--(clean|update)\b", "", str(path)).strip()
     spec = core.parse_vcfile(path)
     name = Path(path).parent.name
     core.valid_name(name)
