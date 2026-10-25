@@ -636,11 +636,16 @@ bash -c '
   fi
 
   cleanup() {
-      # 1. Kill port-forwarding if active
-      [ -n "${socat_pid:-}" ] && sudo kill "$socat_pid" 2>/dev/null || true
-      
-      # 2. Wait briefly for container processes to finish terminating
+      # Wait briefly for container processes to finish terminating
       sleep 0.2
+
+      # Detached container still alive: keep its port forwarder running
+      if [ -n "$(sudo cat /sys/fs/cgroup/vcontainer/$container_name/cgroup.procs 2>/dev/null)" ]; then
+          return 0
+      fi
+
+      # Container is gone: kill port-forwarding if active
+      [ -n "${socat_pid:-}" ] && sudo kill "$socat_pid" 2>/dev/null || true
       
       # 3. Remove leftover cgroup directories (fails safely if already gone or not empty)
       sudo rmdir "/sys/fs/cgroup/vcontainer/$container_name" 2>/dev/null || true
