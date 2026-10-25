@@ -64,3 +64,4 @@ The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments
 - fix: install.ps1 converts backslashes to slashes and strips the \\wsl.localhost prefix before calling bash; tested by running it from PowerShell (install.exe and C:\ paths still untested)
 - fix: catch BrokenPipeError on client disconnect (api.py)
 - test: verify install.exe works on Windows
+- docs: mark C:\ path installation as verified
