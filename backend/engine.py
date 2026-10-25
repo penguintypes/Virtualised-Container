@@ -160,6 +160,8 @@ def stop(name):
     return result
 
 def remove(name):
+    try: _call("stop", name)
+    except Exception: pass
     _call("rm", name); data = _load(); data.pop(name, None); _save(data)
 
 def logs(name): return {"logs": _call("logs", name)}
