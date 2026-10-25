@@ -45,3 +45,4 @@ The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments
 - fix: samples/blog/index.html poll() ignores empty server responses, so the default post text no longer disappears
 - test: added tests/rest_cases.sh (one-command run of 6 REST cases incl. memory limit) and rewrote vcontainer_6_test_cases.md for the REST API with list commands
 - fix: engine/src/cgroup.sh sets memory.swap.max to 0 with the memory limit, so an over-limit process is killed instead of swapped (WSL2)
+- docs: README install section now says clone + bash install.sh (removed the one-line curl installer, which cannot work), notes install.exe is built locally with makensis, and points to engine-arm/
