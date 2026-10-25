@@ -647,7 +647,7 @@ bash -c '
       sudo rmdir "/sys/fs/cgroup/$container_name" 2>/dev/null || true
   }
   trap cleanup EXIT INT TERM
-  sudo ./build/vcontainer run \
+  sudo /usr/local/libexec/vcontainer/build/vcontainer run \
     --image "$image" \
     "$@"
 ' vcontainer-run "$image" "$publish_port" "$container_name" "$container_ip" "$@"

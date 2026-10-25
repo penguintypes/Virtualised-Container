@@ -33,3 +33,4 @@ The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments
 - sec: established strict root-owned security boundary in /usr/local/libexec/vcontainer
 - sys: installed uidmap and configured subordinate UID/GID ranges for user namespaces
 - fix: removed deadlocking runtime recompilation and fixed image JSON parsing
+- fix: restored execution script syntax and patched absolute path for C binary
