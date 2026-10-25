@@ -52,7 +52,7 @@ class Handler(BaseHTTPRequestHandler):
                 name = core.valid_name(data.get("name") or data["image"] + "-" + str(os.getpid()))
                 port = data.get("port") or ((data.get("ports") or [None])[0])
                 return self.send_json(201, engine.run(name, data["image"], data.get("command"), data.get("memory"), data.get("cpus"), data.get("pids"), port))
-            if path == "/images/build": return self.send_json(201, engine.build(data["file"]))
+            if path == "/images/build": return self.send_json(201, engine.build(data["file"], clean=data.get("clean", False), update=data.get("update", False)))
             if len(path.strip("/").split("/")) == 3 and path.strip("/").split("/")[0] == "images" and path.strip("/").split("/")[2] == "upload":
                 import tempfile, os
                 n = core.valid_name(path.strip("/").split("/")[1])
