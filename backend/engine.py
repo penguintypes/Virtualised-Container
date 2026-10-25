@@ -143,7 +143,7 @@ def run(name, image, command=None, memory=None, cpus=None, pids=None, port=None)
     if port: args += ["-p", str(port)]
     args += ["--"] + command
     output = _call(*args, timeout=60)
-    return _record(name, id=name, name=name, image=image, status="running", pid=None, created=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), ports=[port] if port else [], command=command, output=output)
+    return _record(name, id=name, name=name, image=image, status="running", pid=None, created=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), ports=[port] if port else [], command=command, output=output, memory=memory, cpus=cpus, pids=pids)
 
 def inspect(name):
     data = _parse(_call("inspect", name))

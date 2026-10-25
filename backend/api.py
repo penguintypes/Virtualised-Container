@@ -95,10 +95,18 @@ class VcApiHandler(BaseHTTPRequestHandler):
             target_name = core.valid_name(url_chunks[1])
             
             if len(url_chunks) == 2:
-                # just load and run
+                # just load and run, preserving original resource limits
                 obj = engine._load().get(target_name, {})
                 old_port = (obj.get("ports") or [None])[0]
-                return self.respond_with_json(200, engine.run(target_name, obj.get("image", "alpine"), obj.get("command"), port=old_port))
+                return self.respond_with_json(200, engine.run(
+                    target_name, 
+                    obj.get("image", "alpine"), 
+                    obj.get("command"), 
+                    memory=obj.get("memory"), 
+                    cpus=obj.get("cpus"), 
+                    pids=obj.get("pids"), 
+                    port=old_port
+                ))
             
             if url_chunks[2] == "stop":
                 engine.stop(target_name)

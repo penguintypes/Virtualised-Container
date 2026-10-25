@@ -68,3 +68,4 @@ The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments
 - refactor: de-golf api.py for better human readability
 - feat: start.sh launches only the dashboard without auto-starting demo containers
 - fix: resolve test imports, stop loop, mojibake, and security leaks
+- fix: persist container resource limits (memory, cpus, pids) in engine.json and restore them on restart
