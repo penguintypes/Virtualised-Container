@@ -571,31 +571,12 @@ bash -c '
   work=/tmp/vcontainer-work
   mkdir -p "$work/src" "$work/include" "$work/build"
 
-  cp "$project_dir/src/vcontainer.c" "$work/src/"
-  cp "$project_dir/src/cgroup.c" "$work/src/"
-  cp "$project_dir/src/namespace.c" "$work/src/"
-  cp "$project_dir/src/seccomp.c" "$work/src/"
-  cp "$project_dir/src/remember.c" "$work/src/"
-  cp "$project_dir/src/log.c" "$work/src/"
-  cp "$project_dir/src/state.c" "$work/src/"
-  cp "$project_dir/src/overlay.c" "$work/src/"
-  cp "$project_dir/src/network.c" "$work/src/"
-  cp "$project_dir/include/cgroup.h" "$work/include/"
-  cp "$project_dir/include/namespace.h" "$work/include/"
-  cp "$project_dir/include/seccomp.h" "$work/include/"
-  cp "$project_dir/include/remember.h" "$work/include/"
-  cp "$project_dir/include/log.h" "$work/include/"
-  cp "$project_dir/include/state.h" "$work/include/"
-  cp "$project_dir/include/overlay.h" "$work/include/"
-  cp "$project_dir/include/network.h" "$work/include/"
   cp "$project_dir/src/cgroup.sh" "$work/"
   cp "$project_dir/src/image.sh" "$work/"
   cp "$project_dir/src/network.sh" "$work/"
-  cp "$project_dir/Makefile" "$work/"
 
   cd "$work"
   chmod 755 cgroup.sh image.sh network.sh
-  make
 ' vcontainer-build "$project_dir"
 
 
