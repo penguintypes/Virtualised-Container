@@ -37,7 +37,7 @@ The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments
 - fix: build_helper.sh cp kept trailing /. so rootfs copies no longer nest and etc/resolv.conf is present; source must be under /var/lib/vcontainer/
 - fix: run_container.sh cleanup trap keeps socat while the container's cgroup.procs is non-empty, so detached 8081/8082 stay reachable
 - fix: repaired alpine meta.json (invalid JSON made GET /images return 400)
-- docs: README installer URL set to the raw install.sh link, Ubuntu version and root-owned deploy rule documented
+- docs: README documents Ubuntu version and the root-owned deploy rule
 - fix: install.sh wrote alpine meta.json with escaped quotes, which made the file invalid JSON
 - fix: install.sh asks for the sudoers NOPASSWD rule via /dev/tty when piped (curl | bash); defaults to no when there is no terminal, VC_SUDOERS=y overrides
 - fix: backend/engine.py run() accepts command as a string (shlex.split) as well as a list; string form raised bad_request
@@ -48,8 +48,12 @@ The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments
 - docs: README install section now says clone + bash install.sh (removed the one-line curl installer, which cannot work), notes install.exe is built locally with makensis, and points to engine-arm/
 - fix: backend api forwards clean and update flags to engine.build
 - feat: grouped run actions into a split-button dropdown in GUI
-- feat: added incremental build cache checkboxes to GUI
+- feat: GUI build asks for --clean and --update via confirm() prompts
 - fix: corrected GUI dropdown CSS inline override to restore toggle visibility
 - fix: engine.remove catches rm exceptions to prevent ghost containers
 - chore: removed one-off patch scripts (patch_images.py)
 - fix: engine.build() strips only trailing --clean/--update flags, so Vcfile paths with spaces work
+- fix: engine exec joins the container cgroup (--cgroup), so exec honors memory and pid limits
+- fix: run_container.sh cleanup checks cgroup.procs with sudo cat (-n); -s is always false on kernel files
+- chore: removed duplicated JS/CSS blocks in gui/app.js and gui/style.css
+- chore: removed fix_install.py, fix_dropdown.py, cleanup.py, vcontainer-source-dump.txt, and install.exe
