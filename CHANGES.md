@@ -34,3 +34,7 @@ The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments
 - sys: installed uidmap and configured subordinate UID/GID ranges for user namespaces
 - fix: removed deadlocking runtime recompilation and fixed image JSON parsing
 - fix: restored execution script syntax and patched absolute path for C binary
+- fix: build_helper.sh cp kept trailing /. so rootfs copies no longer nest and etc/resolv.conf is present; source must be under /var/lib/vcontainer/
+- fix: run_container.sh cleanup trap keeps socat while the container's cgroup.procs is non-empty, so detached 8081/8082 stay reachable
+- fix: repaired alpine meta.json (invalid JSON made GET /images return 400)
+- docs: README installer URL set to the raw install.sh link, Ubuntu version and root-owned deploy rule documented
