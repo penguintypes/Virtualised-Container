@@ -48,3 +48,6 @@ The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments
 - docs: README install section now says clone + bash install.sh (removed the one-line curl installer, which cannot work), notes install.exe is built locally with makensis, and points to engine-arm/
 - feat: grouped run actions into a split-button dropdown in GUI
 - fix: backend api forwards clean and update flags to engine.build
+- feat: grouped run actions into a split-button dropdown in GUI
+- feat: added incremental build cache checkboxes to GUI
+- fix: corrected GUI dropdown CSS inline override to restore toggle visibility
