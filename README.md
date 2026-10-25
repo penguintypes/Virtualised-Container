@@ -59,7 +59,7 @@ Sample containers:
 - **Strict Sudoers Scope:** Privilege escalation is locked down in `/etc/sudoers.d/vcontainer` to two root-owned scripts in `/usr/local/libexec/vcontainer/`. Edits to `engine/*.sh` take effect only after `sudo install -o root -g root -m 755 engine/<file> /usr/local/libexec/vcontainer/<file>`:
   1. `engine/run_container.sh`: Executes isolation primitives (namespaces, cgroup creation, overlay mount).
   2. `engine/build_helper.sh`: Constrained wrapper for build tasks (`tar`, `install`, `cp`, `chroot`, safe path-checked `rm`).
-- **Isolation Layers:** Containers utilize PID, Mount, UTS, IPC, Network, and User namespaces, cgroup v2 resource accounting, and overlayfs isolation.
+- **Isolation Layers:** Containers utilize PID, Mount, UTS, IPC, Network, and User namespaces, cgroup v2 limits (memory with swap disabled, pids, cpu), and overlayfs isolation.
 
 ## Verification & Testing
 
