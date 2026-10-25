@@ -41,3 +41,5 @@ The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments
 - fix: install.sh wrote alpine meta.json with escaped quotes, which made the file invalid JSON
 - fix: install.sh asks for the sudoers NOPASSWD rule via /dev/tty when piped (curl | bash); defaults to no when there is no terminal, VC_SUDOERS=y overrides
 - fix: backend/engine.py run() accepts command as a string (shlex.split) as well as a list; string form raised bad_request
+- fix: backend/engine.py remove() stops a running container before rm, so API and dashboard delete work on running containers
+- fix: samples/blog/index.html poll() ignores empty server responses, so the default post text no longer disappears
