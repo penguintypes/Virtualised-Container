@@ -634,6 +634,6 @@ bash -c '
   }
   trap cleanup EXIT INT TERM
   sudo /usr/local/libexec/vcontainer/build/vcontainer run \
-    --image "$image" \
+    --image "$image" --seccomp \
     "$@"
 ' vcontainer-run "$image" "$publish_port" "$container_name" "$container_ip" "$@"
