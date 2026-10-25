@@ -10,12 +10,16 @@ GUI = Path(__file__).resolve().parents[1] / "gui"
 class Handler(BaseHTTPRequestHandler):
     def send_json(self, code, value=None):
         body = b"" if value is None else json.dumps(value).encode()
-        self.send_response(code); self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "http://localhost:8080"); self.send_header("Access-Control-Allow-Headers", "Content-Type")
-        self.send_header("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS"); self.end_headers(); self.wfile.write(body)
+        try:
+            self.send_response(code); self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "http://localhost:8080"); self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS"); self.end_headers(); self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError): pass
     def body(self):
         return json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
-    def fail(self, error, code="bad_request", status=400): self.send_json(status, {"error": str(error), "code": code})
+    def fail(self, error, code="bad_request", status=400):
+        if isinstance(error, (BrokenPipeError, ConnectionResetError)): return
+        self.send_json(status, {"error": str(error), "code": code})
     def do_OPTIONS(self): self.send_json(204)
     def do_HEAD(self):
         if urlparse(self.path).path in ("/", "/index.html"):

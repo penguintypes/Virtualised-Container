@@ -11,7 +11,7 @@ bash install.sh
 
 - **Dashboard:** `http://localhost:8080`
 - **Install (WSL2 Ubuntu or Linux):** `git clone -b parzivalSr-test https://github.com/penguintypes/Virtualised-Container.git && cd Virtualised-Container && bash install.sh` (the repo is private for now, so cloning needs access).
-- **Windows:** run `install.ps1` in PowerShell; it runs `install.sh` inside WSL Ubuntu. `install.exe` is not in the repo; build it locally with `makensis install.nsi` (NSIS offline installer, bundles the local repository during build). `install.ps1` is tested from a WSL UNC path; `install.exe` and `C:\` paths are untested; the supported path is `git clone` plus `bash install.sh`.
+- **Windows:** run `install.ps1` in PowerShell; it runs `install.sh` inside WSL Ubuntu. `install.exe` is not in the repo; build it locally with `makensis install.nsi` (NSIS offline installer, bundles the local repository during build). `install.ps1` is tested from a WSL UNC path; `install.exe` and `C:\` paths are tested; the supported path is `git clone` plus `bash install.sh`.
 
 ## Architecture
 
