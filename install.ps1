@@ -1,7 +1,9 @@
 $ErrorActionPreference = 'Stop'
-if (-not (Get-Command wsl.exe -ErrorAction SilentlyContinue)) { wsl --install -d Ubuntu; Write-Host 'WSL installation started; reboot may be needed.'; exit 0 }
-$path = & wsl.exe wslpath -a -u $PSScriptRoot
-wsl.exe -d Ubuntu -- bash "$path/install.sh"
-Start-Process wsl.exe -ArgumentList '-d','Ubuntu','--','bash','-lc',"'$path/start.sh'"
-Start-Sleep -Seconds 12
+$d = if ($env:VC_DISTRO) { $env:VC_DISTRO } else { 'Ubuntu' }
+if (-not (Get-Command wsl.exe -ErrorAction SilentlyContinue)) { wsl --install -d $d; Write-Host 'WSL installation started; reboot may be needed.'; exit 0 }
+$path = & wsl.exe -d $d wslpath -a -u $PSScriptRoot
+wsl.exe -d $d -- bash "$path/install.sh"
+if ($LASTEXITCODE -ne 0) { Write-Host 'install.sh failed; not starting.'; exit 1 }
+Start-Process wsl.exe -ArgumentList '-d',$d,'--','bash','-lc',"'$path/start.sh'"
+for ($i = 0; $i -lt 60; $i++) { try { Invoke-WebRequest http://localhost:8080 -UseBasicParsing -TimeoutSec 2 | Out-Null; break } catch { Start-Sleep 1 } }
 Start-Process 'http://localhost:8080'
