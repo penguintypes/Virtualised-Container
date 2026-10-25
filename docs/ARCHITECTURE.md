@@ -12,4 +12,4 @@
 
 ## Privilege model
 
-Namespace creation is attempted with `the Bash engine`. cgroup, network, mount, and security hardening are capability-gated rather than silently faked. A privileged deployment should add a dedicated cgroup subtree under `/sys/fs/cgroup`, configure a bridge/veth pair, and apply seccomp/no-new-privs before exec.
+Namespace creation is attempted by `run_container.sh`. cgroup, network, mount, and security hardening are capability-gated rather than silently faked. A privileged deployment should add a dedicated cgroup subtree under `/sys/fs/cgroup`, configure a bridge/veth pair, and apply seccomp/no-new-privs before exec.
