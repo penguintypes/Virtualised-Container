@@ -52,3 +52,4 @@ The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments
 - fix: corrected GUI dropdown CSS inline override to restore toggle visibility
 - fix: engine.remove catches rm exceptions to prevent ghost containers
 - chore: removed one-off patch scripts (patch_images.py)
+- fix: engine.build() strips only trailing --clean/--update flags, so Vcfile paths with spaces work
