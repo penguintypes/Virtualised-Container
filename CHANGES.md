@@ -38,3 +38,4 @@ The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments
 - fix: run_container.sh cleanup trap keeps socat while the container's cgroup.procs is non-empty, so detached 8081/8082 stay reachable
 - fix: repaired alpine meta.json (invalid JSON made GET /images return 400)
 - docs: README installer URL set to the raw install.sh link, Ubuntu version and root-owned deploy rule documented
+- fix: install.sh wrote alpine meta.json with escaped quotes, which made the file invalid JSON
