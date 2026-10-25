@@ -22,6 +22,7 @@ case "$action" in
 
         mkdir "$group"
         echo "$memory_max" > "$group/memory.max"
+        [ -w "$group/memory.swap.max" ] && echo 0 > "$group/memory.swap.max"
         echo "$pid_max" > "$group/pids.max"
         echo "$cpu_quota $cpu_period" > "$group/cpu.max"
         ;;
