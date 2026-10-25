@@ -10,8 +10,8 @@ bash install.sh
 ```
 
 - **Dashboard:** `http://localhost:8080`
-- **One-line installer:** `curl -fsSL https://raw.githubusercontent.com/penguintypes/Virtualised-Container/parzivalSr-test/install.sh | bash`
-- **Windows / Offline deployment:** Run `install.exe` (built via NSIS) or execute `install.ps1` in PowerShell.
+- **Install (WSL2 Ubuntu or Linux):** `git clone -b parzivalSr-test https://github.com/penguintypes/Virtualised-Container.git && cd Virtualised-Container && bash install.sh` (the repo is private for now, so cloning needs access).
+- **Windows:** run `install.ps1` in PowerShell; it runs `install.sh` inside WSL Ubuntu. `install.exe` is not in the repo; build it locally with `makensis install.nsi` (NSIS web installer, downloads the source at install time).
 
 ## Architecture
 
@@ -29,7 +29,7 @@ Browser :8080 -> backend/api.py -> backend/engine.py
                        /var/lib/vcontainer/  namespaces/cgroups/overlay
 ```
 
-`Vcontainer(arm)` is retained as an unmerged reference. Custom runtime adaptations are documented in `patches/`.
+`engine-arm/` is retained as an unmerged ARM reference. Custom runtime adaptations are documented in `patches/`.
 
 ## Usage & API
 
