@@ -69,3 +69,4 @@ The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments
 - feat: start.sh launches only the dashboard without auto-starting demo containers
 - fix: resolve test imports, stop loop, mojibake, and security leaks
 - fix: persist container resource limits (memory, cpus, pids) in engine.json and restore them on restart
+- fix: run_container.sh passes --seccomp by default, so containers block mount, pivot_root, ptrace, unshare, setns and module syscalls and set no_new_privs
