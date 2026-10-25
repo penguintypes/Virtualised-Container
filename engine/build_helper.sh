@@ -24,7 +24,10 @@ case "$cmd" in
         ;;
     cp)
         [ "$1" = "-a" ] || exit 1
-        src=$(realpath -m "$2")
+        raw="$2"
+        src=$(realpath -m "$raw")
+        [[ "$src" == /var/lib/vcontainer/* ]] || { echo "Unsafe source: $raw ($src)" >&2; exit 1; }
+        [[ "$raw" == */. ]] && src="$src/."
         dst=$(safe_path "$3")
         exec cp -a "$src" "$dst"
         ;;
