@@ -66,3 +66,4 @@ The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments
 - test: verify install.exe works on Windows
 - docs: mark C:\ path installation as verified
 - refactor: de-golf api.py for better human readability
+- feat: start.sh launches only the dashboard without auto-starting demo containers
