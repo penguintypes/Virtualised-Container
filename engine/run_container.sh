@@ -546,7 +546,7 @@ case "$action" in
 
             sudo sh -c '"'"'echo 1 > "$1/cgroup.kill"'"'"' sh "$group"
             for attempt in $(seq 1 50); do
-                [ -s "$group/cgroup.procs" ] || break
+                [ -n "$(sudo cat "$group/cgroup.procs" 2>/dev/null)" ] || break
                 sleep 0.1
             done
             if sudo test -f "/var/lib/vcontainer/containers/$name/port.pid"; then

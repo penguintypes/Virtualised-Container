@@ -59,7 +59,7 @@ class VcApiHandler(BaseHTTPRequestHandler):
         # read the body directly here since we only need it for POST
         content_len = int(self.headers.get("Content-Length", 0))
         raw_data = self.rfile.read(content_len) if content_len > 0 else b"{}"
-        req_data = json.loads(raw_data)
+        req_data = json.loads(raw_data) if not parsed.path.endswith("/upload") else {}
 
         try:
             if parsed.path == "/containers":
@@ -144,7 +144,7 @@ class VcApiHandler(BaseHTTPRequestHandler):
             if len(url_chunks) == 3 and url_chunks[0] == "images" and url_chunks[2] == "download":
                 img_tar = engine.export_image(core.valid_name(url_chunks[1]))
                 tar_bytes = img_tar.read_bytes()
-                subprocess.run(["sudo", "-n", "rm", "-rf", str(img_tar.parent)])
+                subprocess.run(["sudo", "-n", "/usr/local/libexec/vcontainer/build_helper.sh", "rm", "-rf", str(img_tar.parent)])
                 self.send_response(200)
                 self.send_header("Content-Type", "application/x-tar")
                 self.end_headers()

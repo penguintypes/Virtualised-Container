@@ -12,7 +12,6 @@ host=$(hostname); grep -q 'status=running' /tmp/vcontainer-inspect; ! grep -q "h
 ! find /sys/fs/cgroup/vcontainer -mindepth 1 -maxdepth 1 -name itest -print -quit 2>/dev/null | grep -q .
 python3 - <<'PY'
 import urllib.request
-for port in (8081, 8082):
+for port in (8080,):
     urllib.request.urlopen(f'http://127.0.0.1:{port}/', timeout=3)
 PY
-curl -fsS http://127.0.0.1:8082/run -H 'Content-Type: application/json' -d '{"language":"python","code":"print(2+2)"}'

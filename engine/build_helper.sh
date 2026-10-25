@@ -19,6 +19,7 @@ case "$cmd" in
     install)
         [ "$1" = "-D" ] && [ "$2" = "-m" ] && [ "$3" = "644" ] || exit 1
         src=$(realpath -m "$4")
+        [[ "$src" == /var/lib/vcontainer/* ]] || { echo "Unsafe source" >&2; exit 1; }
         dst=$(safe_path "$5")
         exec install -D -m 644 "$src" "$dst"
         ;;
