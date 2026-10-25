@@ -7,9 +7,3 @@ button.primary{background:#5766f2;color:#fff;border:0}
 dialog p{display:flex;gap:8px;margin-top:18px}
 table{width:100%;background:#fff;border-collapse:collapse;border-radius:12px}
 th,td{padding:13px;border-bottom:1px solid #edf0f5;text-align:left}
-button{font:inherit;border:1px solid #dfe3ec;background:#fff;border-radius:6px;padding:7px 10px;cursor:pointer}
-button:hover{background:#f0f2f7}
-button.primary{background:#5766f2;color:#fff;border:0}
-dialog p{display:flex;gap:8px;margin-top:18px}
-table{width:100%;background:#fff;border-collapse:collapse;border-radius:12px}
-th,td{padding:13px;border-bottom:1px solid #edf0f5;text-align:left}

@@ -462,7 +462,7 @@ case "$action" in
 
             exec nsenter \
                 --target "$pid" \
-                --mount --uts --ipc --net --pid --user \
+                --mount --uts --ipc --net --pid --user --cgroup \
                 --root="/proc/$pid/root" \
                 --wd=/ \
                 -- "$@"

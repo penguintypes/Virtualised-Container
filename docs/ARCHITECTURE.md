@@ -1,6 +1,6 @@
 # Architecture
 
-`backend/core.py` owns state and lifecycle. `backend/cli.py` and `backend/api.py` are thin adapters over those same functions, so behavior stays consistent. The GUI is static content served by the API.
+`backend/engine.py` owns state and lifecycle, delegating to the `run_container.sh` Bash engine. `backend/core.py` parses Vcfiles. `backend/api.py` is the REST adapter over the engine and serves the static GUI.
 
 ## Lifecycle
 
@@ -12,4 +12,4 @@
 
 ## Privilege model
 
-Namespace creation is attempted with `os.unshare`. cgroup, network, mount, and security hardening are capability-gated rather than silently faked. A privileged deployment should add a dedicated cgroup subtree under `/sys/fs/cgroup`, configure a bridge/veth pair, and apply seccomp/no-new-privs before exec.
+Namespace creation is attempted with `the Bash engine`. cgroup, network, mount, and security hardening are capability-gated rather than silently faked. A privileged deployment should add a dedicated cgroup subtree under `/sys/fs/cgroup`, configure a bridge/veth pair, and apply seccomp/no-new-privs before exec.

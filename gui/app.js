@@ -25,14 +25,3 @@ async function quickRun(img, port) {
         show('containers');
     } catch(e) { toast(e.message); }
 }
-async function quickRun(img, port) {
-    try {
-        await api('/containers', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({image: img, name: img, port: port})
-        });
-        toast(img + ' started');
-        show('containers');
-    } catch(e) { toast(e.message); }
-}

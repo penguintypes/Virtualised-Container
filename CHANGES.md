@@ -46,7 +46,6 @@ The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments
 - test: added tests/rest_cases.sh (one-command run of 6 REST cases incl. memory limit) and rewrote vcontainer_6_test_cases.md for the REST API with list commands
 - fix: engine/src/cgroup.sh sets memory.swap.max to 0 with the memory limit, so an over-limit process is killed instead of swapped (WSL2)
 - docs: README install section now says clone + bash install.sh (removed the one-line curl installer, which cannot work), notes install.exe is built locally with makensis, and points to engine-arm/
-- feat: grouped run actions into a split-button dropdown in GUI
 - fix: backend api forwards clean and update flags to engine.build
 - feat: grouped run actions into a split-button dropdown in GUI
 - feat: added incremental build cache checkboxes to GUI
