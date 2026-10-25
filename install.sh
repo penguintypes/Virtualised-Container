@@ -27,7 +27,7 @@ if [ -t 0 ]; then read -r -p 'Install personal-machine sudoers NOPASSWD rule for
 if [[ ${answer:-N} =~ ^[Yy]$ ]]; then echo "$user ALL=(root) NOPASSWD: /usr/local/libexec/vcontainer/run_container.sh, /usr/local/libexec/vcontainer/build_helper.sh" | sudo tee /etc/sudoers.d/vcontainer >/dev/null; sudo chmod 440 /etc/sudoers.d/vcontainer; fi
 if ! sudo test -d /var/lib/vcontainer/images/alpine/rootfs; then sudo "$root/engine/src/image.sh" pull alpine; fi
 sudo chmod -R a+rX /var/lib/vcontainer/images
-echo \'{"id":"alpine","name":"alpine","created":"2026-10-23T00:00:00Z","size":8427299,"cmd":["/bin/sh"],"env":{}}\' | sudo tee /var/lib/vcontainer/images/alpine/meta.json > /dev/null
+echo '{"id":"alpine","name":"alpine","created":"2026-10-23T00:00:00Z","size":8427299,"cmd":["/bin/sh"],"env":{}}' | sudo tee /var/lib/vcontainer/images/alpine/meta.json > /dev/null
 PYTHONPATH="$root" python3 - <<'PY'
 import os
 from backend import engine
