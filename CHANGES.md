@@ -30,3 +30,4 @@ The WSL installer, PowerShell/NSIS launchers, verification checklist, no-root un
 ## Samples and UI
 
 The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments and Markdown preview, and the runner uses Python, Node, and C. Java was omitted to keep the sample image smaller. The dashboard supports run, start, stop, logs, delete, build, stats, and published-port links.
+- sec: established strict root-owned security boundary in /usr/local/libexec/vcontainer
