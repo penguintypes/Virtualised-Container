@@ -51,3 +51,4 @@ The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments
 - feat: added incremental build cache checkboxes to GUI
 - fix: corrected GUI dropdown CSS inline override to restore toggle visibility
 - fix: engine.remove catches rm exceptions to prevent ghost containers
+- chore: removed one-off patch scripts (patch_images.py)
