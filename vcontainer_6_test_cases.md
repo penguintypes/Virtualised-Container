@@ -1,221 +1,101 @@
-# vcontainer: 6 Core Test Cases
+# vcontainer: Core Test Cases
 
-**Purpose:** Verify vcontainer core functionality end-to-end
-**Environment:** WSL2 Ubuntu or bare-metal Linux
-**Time required:** ~15 minutes
-**Status:** Can run in parallel with feature development
+Verifies the runtime end-to-end through the REST API. Tested on WSL2 Ubuntu 26.04.
 
----
+**Prerequisites:** `./start.sh` running (dashboard on :8080), images `alpine`, `blog`, `runner` already built. No rebuild or download is needed.
 
-## TEST SET B: Sample Containers
+## Run all cases with one command
 
-### B1: Blog Container Execution
-**What we're testing:** Blog image builds and can execute filesystem commands
-
-**Setup (one time):**
 ```bash
-curl -X POST http://localhost:8080/images/build -d '{"file": "samples/blog/Vcfile"}' -H "Content-Type: application/json"
-# Expected output: JSON with image details
+bash tests/rest_cases.sh
 ```
 
-**Test B1:**
+Expected: six `PASS` lines, then `RESULT 6/6 passed`. Takes about 1 minute and cleans up after itself.
+
+## Notes that apply to every case
+
+- `command` is a JSON list: `["/bin/cat","/opt/index.html"]`. A plain string is also accepted and split like a shell would.
+- Container status values are `running` and `stopped`.
+- The blog page is at `/opt/index.html` inside the image.
+
+## B1: Blog image runs a command
+
 ```bash
-curl -X POST http://localhost:8080/containers -d '{"name": "blog-demo", "image": "blog", "command": "/bin/cat var/www/index.html"}' -H "Content-Type: application/json"
+curl -s -X POST http://localhost:8080/containers -H "Content-Type: application/json" -d '{"name":"blog-demo","image":"blog","command":["/bin/cat","/opt/index.html"]}'
+sleep 3; curl -s http://localhost:8080/containers/blog-demo/logs | grep -io 'doctype html'
+curl -s -X DELETE http://localhost:8080/containers/blog-demo
 ```
 
-**Expected output:**
-```json
-{"id": "<container-id>", "status": "running", ...}
+Pass: logs contain `doctype html`; container deleted.
+
+## B2: Runner image runs Python
+
+```bash
+curl -s -X POST http://localhost:8080/containers -H "Content-Type: application/json" -d @- <<'JSON'
+{"name":"runner-test","image":"runner","command":["python3","-c","print('runner works')"]}
+JSON
+sleep 3; curl -s http://localhost:8080/containers/runner-test/logs
+curl -s -X DELETE http://localhost:8080/containers/runner-test
 ```
 
-**Verify logs contain HTML:**
+Pass: logs show `runner works`; the container list shows status `stopped`.
+
+## C1: API and dashboard stay in sync
+
 ```bash
-curl -s http://localhost:8080/containers/blog-demo/logs | grep -o "<!DOCTYPE html>"
+curl -s -X POST http://localhost:8080/containers -H "Content-Type: application/json" -d '{"name":"c1","image":"blog","command":["/bin/sh","-c","sleep 120"]}'
 ```
 
-**Cleanup:**
+1. Open http://localhost:8080. Card `c1` shows `running`.
+2. Click Stop on the card. The badge changes to `stopped` and a Start button appears.
+3. Check the API:
+
 ```bash
-curl -X DELETE http://localhost:8080/containers/blog-demo
+curl -s http://localhost:8080/containers | grep -o '"name": "c1", "image": "blog", "status": "[a-z]*"'
+curl -s -X DELETE http://localhost:8080/containers/c1
 ```
 
-**Pass criteria:** ✓ Container created with blog image
-✓ Command executed inside container (cat ran)
-✓ Logs show HTML file contents
-✓ Container deleted successfully
+Pass: API reports `stopped` after the dashboard Stop. Delete also works on a running container (it stops it first).
 
----
+## C2: Memory limit is enforced
 
-### B2: Runner Container (Python Execution)
-**What we're testing:** Runner image has Python interpreter and can execute code
-
-**Setup (one time):**
 ```bash
-curl -X POST http://localhost:8080/images/build -d '{"file": "samples/runner/Vcfile"}' -H "Content-Type: application/json"
+curl -s -X POST http://localhost:8080/containers -H "Content-Type: application/json" -d @- <<'JSON'
+{"name":"c2","image":"runner","memory":"128M","command":["python3","-c","x=b'a'*(300*1024*1024);print('survived')"]}
+JSON
+sleep 6; curl -s http://localhost:8080/containers/c2/logs
+curl -s -X DELETE http://localhost:8080/containers/c2
 ```
 
-**Test B2:**
+Pass: logs do not contain `survived` (the kernel killed the process at 128 MB). The container list shows `stopped`. Swap is disabled for limited containers (`memory.swap.max` = 0), otherwise WSL2 pushes the excess to swap and the process survives.
+
+## A1: File isolation
+
 ```bash
-curl -X POST http://localhost:8080/containers -d '{"name": "runner-test", "image": "runner", "command": "python3 -c \"print('runner works')\""}' -H "Content-Type: application/json"
-```
-
-**Verify logs contain output:**
-```bash
-curl -s http://localhost:8080/containers/runner-test/logs
-```
-*Expected: "runner works"*
-
-**Inspect container:**
-```bash
-curl -s http://localhost:8080/containers/runner-test | grep exit_code
-```
-*Expected: "exit_code": 0*
-
-**Cleanup:**
-```bash
-curl -X DELETE http://localhost:8080/containers/runner-test
-```
-
----
-
-## TEST SET C: Dashboard Integration
-
-### C1: Create via API → View in Dashboard → Stop via Dashboard
-
-**What we're testing:** API and dashboard are in sync; actions work in both directions
-
-**Terminal 1: Ensure system is running**
-```bash
-bash start.sh
-```
-
-**Step 1: Create container via API**
-```bash
-curl -X POST http://localhost:8080/containers -d '{"name": "c1", "image": "blog", "command": "/bin/sh -c \"sleep 30\""}' -H "Content-Type: application/json"
-```
-
-**Step 2: Verify container is running via API**
-```bash
-curl -s http://localhost:8080/containers | grep -o '"name": "c1"'
-```
-
-**Step 3: View in dashboard**
-Open browser: `http://localhost:8080`
-*Expected: "c1" is listed, status badge is green (running), memory/processes visible.*
-
-**Step 4: Stop via dashboard**
-On the `c1` card, click the `Stop` button.
-*Expected: Status changes to exited (gray).*
-
-**Step 5: Verify stop via API**
-```bash
-curl -s http://localhost:8080/containers | grep '"status"'
-```
-
-**Step 6: Cleanup**
-```bash
-curl -X DELETE http://localhost:8080/containers/c1
-```
-
----
-
-## TEST SET A: Process Isolation
-
-### A1: File I/O Isolation
-**What we're testing:** Files written inside a container don't appear on the host filesystem
-
-**Test A1:**
-```bash
-curl -X POST http://localhost:8080/containers -d '{"name": "w1", "image": "blog", "command": "/bin/sh -c \"echo hello > /tmp/test.txt && cat /tmp/test.txt\""}' -H "Content-Type: application/json"
-```
-
-**Step 1: Check container logs**
-```bash
-curl -s http://localhost:8080/containers/w1/logs
-```
-*Expected: "hello"*
-
-**Step 2: Check host filesystem**
-```bash
+rm -f /tmp/test.txt
+curl -s -X POST http://localhost:8080/containers -H "Content-Type: application/json" -d '{"name":"w1","image":"blog","command":["/bin/sh","-c","echo hello > /tmp/test.txt && cat /tmp/test.txt"]}'
+sleep 3; curl -s http://localhost:8080/containers/w1/logs
 ls /tmp/test.txt
-```
-*Expected: ls: cannot access '/tmp/test.txt': No such file or directory*
-
-**Step 3: Cleanup**
-```bash
-curl -X DELETE http://localhost:8080/containers/w1
+curl -s -X DELETE http://localhost:8080/containers/w1
 ```
 
----
+Pass: logs show `hello`; `ls` reports `No such file or directory` on the host.
 
-### A2: Namespace Isolation (Hostname)
-**What we're testing:** Each container gets its own hostname (UTS namespace)
+## A2: Hostname isolation (UTS namespace)
 
-**Test A2:**
 ```bash
-curl -X POST http://localhost:8080/containers -d '{"name": "iso1", "image": "blog", "command": "/bin/hostname"}' -H "Content-Type: application/json"
-curl -X POST http://localhost:8080/containers -d '{"name": "iso2", "image": "blog", "command": "/bin/hostname"}' -H "Content-Type: application/json"
-```
-
-**Check hostnames:**
-```bash
-curl -s http://localhost:8080/containers/iso1/logs
-curl -s http://localhost:8080/containers/iso2/logs
-```
-*Expected: "iso1" and "iso2"*
-
-**Verify host hostname is different:**
-```bash
+for n in iso1 iso2; do curl -s -X POST http://localhost:8080/containers -H "Content-Type: application/json" -d "{\"name\":\"$n\",\"image\":\"blog\",\"command\":[\"/bin/hostname\"]}"; done
+sleep 3; curl -s http://localhost:8080/containers/iso1/logs; curl -s http://localhost:8080/containers/iso2/logs
 hostname
+for n in iso1 iso2; do curl -s -X DELETE http://localhost:8080/containers/$n; done
 ```
 
-**Cleanup:**
-```bash
-curl -X DELETE http://localhost:8080/containers/iso1
-curl -X DELETE http://localhost:8080/containers/iso2
-```
+Pass: logs show `iso1` and `iso2`; the host prints its own different name. This passes on the tested WSL2 setup.
 
-**⚠️ Expected to FAIL on WSL2 (Known Limitation):**
-`iso1` and `iso2` may both show the host's hostname. WSL2 sandboxing prevents full unprivileged namespace isolation.
+## Troubleshooting
 
----
+- `Address already in use :8080`: another dashboard is running. Stop it with Ctrl+C in its terminal, then run `./start.sh`.
+- Blog or runner ports refuse connections after a stop: click Start on the card; the port forwarder is recreated.
+- Do not put `!` inside double-quoted shell strings; bash history expansion breaks them. Use single quotes.
 
-## Running All Tests in Sequence (~5 min)
-
-```bash
-# Ensure system is running
-bash start.sh
-
-# B1
-curl -X POST http://localhost:8080/images/build -d '{"file": "samples/blog/Vcfile"}' -H "Content-Type: application/json"
-curl -X POST http://localhost:8080/containers -d '{"name": "blog-demo", "image": "blog", "command": "/bin/cat var/www/index.html"}' -H "Content-Type: application/json"
-curl -s http://localhost:8080/containers/blog-demo/logs
-curl -X DELETE http://localhost:8080/containers/blog-demo
-
-# B2
-curl -X POST http://localhost:8080/images/build -d '{"file": "samples/runner/Vcfile"}' -H "Content-Type: application/json"
-curl -X POST http://localhost:8080/containers -d '{"name": "runner-test", "image": "runner", "command": "python3 -c \"print('runner works')\""}' -H "Content-Type: application/json"
-curl -s http://localhost:8080/containers/runner-test/logs
-curl -X DELETE http://localhost:8080/containers/runner-test
-
-# C1 (open browser to http://localhost:8080 during this test)
-curl -X POST http://localhost:8080/containers -d '{"name": "c1", "image": "blog", "command": "/bin/sh -c \"sleep 30\""}' -H "Content-Type: application/json"
-# [Dashboard: click Stop]
-curl -X DELETE http://localhost:8080/containers/c1
-
-# A1
-curl -X POST http://localhost:8080/containers -d '{"name": "w1", "image": "blog", "command": "/bin/sh -c \"echo hello > /tmp/test.txt && cat /tmp/test.txt\""}' -H "Content-Type: application/json"
-curl -s http://localhost:8080/containers/w1/logs
-ls /tmp/test.txt
-curl -X DELETE http://localhost:8080/containers/w1
-
-# A2
-curl -X POST http://localhost:8080/containers -d '{"name": "iso1", "image": "blog", "command": "/bin/hostname"}' -H "Content-Type: application/json"
-curl -X POST http://localhost:8080/containers -d '{"name": "iso2", "image": "blog", "command": "/bin/hostname"}' -H "Content-Type: application/json"
-curl -s http://localhost:8080/containers/iso1/logs
-curl -s http://localhost:8080/containers/iso2/logs
-curl -X DELETE http://localhost:8080/containers/iso1
-curl -X DELETE http://localhost:8080/containers/iso2
-```
-
----
-*Last updated: 2026-10-24*
+*Last updated: 2026-10-25*
