@@ -82,3 +82,4 @@ The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments
 - fix: stable card and detail layout for stopped containers, Details as its own table column
 - fix: tighter top and bottom spacing so Home has no scrollbar with two containers
 - test: rest_cases.sh runs cases in the doc order (B1, B2, C1, C2, A1, A2); vcontainer_6_test_cases.md C1 now uses the API stop like the script
+- docs: README and ARCHITECTURE.md describe seccomp default, the dashboard, GET /system, image upload/download, start route and the 6 REST cases
