@@ -46,16 +46,28 @@ const toggleBtn = c => c.status === 'running'
   ? `<button data-act="stop" data-id="${esc(c.id)}">Stop</button>`
   : `<button data-act="start" data-id="${esc(c.id)}">Start</button>`;
 
+function portOpen(c) {
+  const list = c.ports || [];
+  if (!list.length) return '<span class="muted">—</span>';
+  return list.map(p => {
+    const hp = p.split(':')[0];
+    return c.status === 'running'
+      ? `<a class="chip port" target="_blank" rel="noopener" title="Open in browser" href="http://localhost:${esc(hp)}">${esc(p)} <span class="arrow">↗</span></a>`
+      : `<span class="chip port off">${esc(p)}</span>`;
+  }).join(' ');
+}
+
 function containerTable(list) {
   if (!list.length) return '<div class="empty">No containers yet.</div>';
   const rows = list.map(c => `<tr>
     <td data-label="Status"><span class="pill ${esc(c.status)}">${esc(c.status)}</span></td>
-    <td data-label="Name"><a class="rname" href="#/containers/${enc(c.id)}">${esc(c.name)}</a></td>
+    <td data-label="Details"><button class="sm" data-act="open" data-id="${esc(c.id)}">Details →</button></td>
+    <td data-label="Name"><a class="rname rimg" href="#/containers/${enc(c.id)}">${esc(c.name)}</a></td>
     <td data-label="Image"><span class="chip">${esc(c.image || '—')}</span></td>
-    <td data-label="Ports" class="mono">${portLinks(c)}</td>
-    <td data-label="Memory limit" class="mono ${c.memory ? '' : 'muted'}">${esc(c.memory || 'No limit')}</td>
+    <td data-label="Ports">${portOpen(c)}</td>
+    <td data-label="Memory limit"><span class="chip ${c.memory ? 'size' : 'none'}">${esc(c.memory || 'No limit')}</span></td>
     <td class="act">${toggleBtn(c)}<button class="danger" data-act="delete" data-id="${esc(c.id)}">Delete</button></td></tr>`).join('');
-  return `<table><tr class="hd"><th>Status</th><th>Name</th><th>Image</th><th>Ports</th><th>Memory limit</th><th></th></tr>${rows}</table>`;
+  return `<table class="ctable"><tr class="hd"><th>Status</th><th>Details</th><th>Name</th><th>Image</th><th>Ports</th><th>Memory limit</th><th></th></tr>${rows}</table>`;
 }
 
 const meter = (label, used, limit, fmt) => {
@@ -83,19 +95,23 @@ function execBox(c) {
   return `<form class="exec cx" data-id="${esc(c.id)}"><input placeholder="Run a command, e.g. ls -la /" required autocomplete="off"><button class="primary">Run</button></form><pre class="out hidden"></pre>`;
 }
 
+function blankBar(label) {
+  return `<div class="mini"><div class="between"><span class="muted">${label}</span><span class="muted">—</span></div><div class="bar"></div></div>`;
+}
+
 function miniBar(label, used, limit, fmt) {
-  if (!limit) return `<div class="mini between"><span class="muted">${label}</span><span class="muted">${fmt(used)} · no limit</span></div>`;
+  if (!limit) return `<div class="mini"><div class="between"><span class="muted">${label}</span><span class="muted">${fmt(used)} · no limit</span></div><div class="bar"></div></div>`;
   const pct = Math.min(100, Math.round((used || 0) / limit * 100));
-  const level = pct >= 90 ? 'hot' : pct >= 70 ? 'warm' : '';
-  return `<div class="mini"><div class="between"><span class="muted">${label}</span><span>${pct}%</span></div><div class="bar ${level}"><i style="width:${pct}%"></i></div></div>`;
+  return `<div class="mini"><div class="between"><span class="muted">${label}</span><span>${pct}%</span></div><div class="bar ${level(pct)}"><i style="width:${pct}%"></i></div></div>`;
 }
 
 function containerCard(c, s) {
   const id = esc(c.id);
   const running = c.status === 'running';
   const hostPort = ((c.ports || [])[0] || '').split(':')[0];
-  const bars = !running ? '<p class="muted">Stopped</p>' : !s ? '<p class="muted">Stats unavailable</p>'
-    : miniBar('Memory', s.memory_bytes, s.memory_limit_bytes, bytes) + miniBar('PIDs', s.pids, s.pid_limit, n => n ?? '—');
+  const bars = running && s
+    ? miniBar('Memory', s.memory_bytes, s.memory_limit_bytes, bytes) + miniBar('PIDs', s.pids, s.pid_limit, n => n ?? '—')
+    : blankBar('Memory') + blankBar('PIDs');
   return `<article class="card ccard">
     <div class="chead"><div><a class="cname" href="#/containers/${enc(c.id)}">${esc(c.name)}</a>
       <div class="meta"><span class="pill ${esc(c.status)}">${esc(c.status)}</span> <span class="chip">${esc(c.image || '—')}</span></div></div>
@@ -208,6 +224,8 @@ function statCard(label, used, limit, series, fmt) {
     ${limit ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ''}${spark(series)}</div>`;
 }
 
+const blankStat = label => `<div class="card"><div class="muted">${label}</div><div class="big">— <small>/ —</small></div><div class="bar"></div>${spark([])}</div>`;
+
 async function detail(id) {
   const c = await api('/containers/' + enc(id));
   const running = c.status === 'running';
@@ -230,7 +248,7 @@ async function detail(id) {
   };
   reloadLogs = loadLogs;
   await loadLogs();
-  if (!running) return;
+  if (!running) { $('#res').innerHTML = blankStat('Memory') + blankStat('PIDs'); return; }
   hist = {mem: [], pid: []};
   const tick = async () => {
     const st = await api(`/containers/${enc(id)}/stats`);
