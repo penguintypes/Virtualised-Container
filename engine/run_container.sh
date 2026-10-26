@@ -39,8 +39,9 @@ case "$action" in
         bash -c '
             set -eu
             project_dir="$1"
-            work=/tmp/vcontainer-work
-            mkdir -p "$work"
+            work=$(mktemp -d)
+            trap \"sudo rm -rf \\"\$work\\"\" EXIT
+            mkdir -p \"\$work\"
             cp "$project_dir/src/image.sh" "$work/"
             cd "$work"
             sudo bash ./image.sh pull "$2" "$3"
@@ -255,8 +256,9 @@ case "$action" in
         bash -c '
             set -eu
             project_dir="$1"
-            work=/tmp/vcontainer-work
-            mkdir -p "$work"
+            work=$(mktemp -d)
+            trap \"sudo rm -rf \\"\$work\\"\" EXIT
+            mkdir -p \"\$work\"
             cp "$project_dir/src/image.sh" "$work/"
             cd "$work"
             sudo bash ./image.sh import "$2" "$3"
@@ -622,6 +624,7 @@ bash -c '
 
       # Detached container still alive: keep its port forwarder running
       if [ -n "$(sudo cat /sys/fs/cgroup/vcontainer/$container_name/cgroup.procs 2>/dev/null)" ]; then
+          sudo rm -rf "$work"
           return 0
       fi
 
@@ -631,6 +634,7 @@ bash -c '
       # 3. Remove leftover cgroup directories (fails safely if already gone or not empty)
       sudo rmdir "/sys/fs/cgroup/vcontainer/$container_name" 2>/dev/null || true
       sudo rmdir "/sys/fs/cgroup/$container_name" 2>/dev/null || true
+      sudo rm -rf "$work"
   }
   trap cleanup EXIT INT TERM
   sudo /usr/local/libexec/vcontainer/build/vcontainer run \
