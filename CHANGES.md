@@ -16,14 +16,6 @@ Vcfile `RUN`, persisted `meta.json`, Alpine blog/runner images, the two sample U
 
 The WSL installer, PowerShell/NSIS launchers, verification checklist, no-root unit tests, and rootful integration script were added.
 
-## Final polish
-
-- chore: ignore vcontainer_source_dump.txt in git
-
-- fix: engine.inspect pops cgroup pids to prevent shadowing the saved pids limit
-
-- sec: replace hardcoded /tmp/vcontainer-work with mktemp -d to prevent collision and symlink attacks
-
 ## Engine patches
 
 - `engine/src/image.sh`: changed image and OCI stores from `/tmp` to `/var/lib/vcontainer` so the API and CLI share images.
@@ -79,7 +71,6 @@ The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments
 - fix: persist container resource limits (memory, cpus, pids) in engine.json and restore them on restart
 - fix: run_container.sh passes --seccomp by default, so containers block mount, pivot_root, ptrace, unshare, setns and module syscalls and set no_new_privs
 - feat: Portainer-inspired dashboard (Home, container detail with logs/stats/exec, images upload/download, dark/light theme)
-- feat: Portainer-inspired dashboard (Home, container detail with logs/stats/exec, images upload/download, dark/light theme)
 - feat: Home container cards with exec and details, single-page container detail, sidebar system panel, fix PIDs limit display
 - feat: minimal two-column Home cards with usage bars and Open button
 - feat: lavender/pink theme, host gauges on Home, GET /system endpoint
@@ -91,3 +82,6 @@ The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments
 - fix: tighter top and bottom spacing so Home has no scrollbar with two containers
 - test: rest_cases.sh runs cases in the doc order (B1, B2, C1, C2, A1, A2); vcontainer_6_test_cases.md C1 now uses the API stop like the script
 - docs: README and ARCHITECTURE.md describe seccomp default, the dashboard, GET /system, image upload/download, start route and the 6 REST cases
+- chore: ignore vcontainer_source_dump.txt in git
+- fix: engine.inspect pops cgroup pids to prevent shadowing the saved pids limit
+- sec: replace hardcoded /tmp/vcontainer-work with mktemp -d to prevent collision and symlink attacks
