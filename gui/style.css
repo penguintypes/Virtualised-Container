@@ -60,3 +60,13 @@ dialog label.chk{display:flex;align-items:center;gap:8px;font-size:14px;color:va
 .sys{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:grid;gap:5px;font-size:12px;color:var(--text)}
 .ok{color:var(--ok)}.bad{color:var(--bad)}.back{color:var(--muted);margin-right:8px}
 @media(max-width:1000px){.ccard,.split{grid-template-columns:1fr}.cside{border-left:0;padding-left:0;border-top:1px solid var(--line);padding-top:16px}}
+
+.cgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.ccard{display:block;padding:18px}
+.ccard .chead{margin-bottom:16px}
+.mini{margin-bottom:12px;font-size:13px}
+.cbtns{margin-top:16px}
+a.btn{display:inline-block;font:inherit;border:1px solid var(--line);border-radius:7px;padding:6px 12px;white-space:nowrap}
+a.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}a.btn:hover{text-decoration:none;filter:brightness(1.1)}
+.bar.warm i{background:#f5b84b}.bar.hot i{background:var(--bad)}
+@media(max-width:900px){.cgrid{grid-template-columns:1fr}}
