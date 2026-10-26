@@ -79,3 +79,4 @@ The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments
 - fix: Quick start creates a new container each click, responsive tables and detail page, larger Details, equal header buttons
 - feat: logs above console with last-lines view, Open button in details, livelier Images table, status pills on Home, Image storage tile
 - feat: aligned detail page grid, colour-filled Details/Start/Stop/Delete buttons
+- fix: stable card and detail layout for stopped containers, Details as its own table column
