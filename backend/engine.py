@@ -195,3 +195,14 @@ def upload_image(name, path):
     subprocess.run(["sudo", "-n", HELPER, "mkdir", "-p", f"{core.STORE}/{name}"], check=True)
     subprocess.run(["sudo", "-n", HELPER, "write_file", f"{core.STORE}/{name}/meta.json"], input=json.dumps(m), text=True, check=True, stdout=subprocess.DEVNULL)
     return m
+
+
+def host_stats():
+    import os
+    meminfo = {}
+    for line in Path("/proc/meminfo").read_text().splitlines():
+        key, _, rest = line.partition(":")
+        meminfo[key] = int(rest.split()[0]) * 1024
+    cpu_times = [int(x) for x in Path("/proc/stat").read_text().splitlines()[0].split()[1:]]
+    return {"cpus": os.cpu_count(), "cpu_times": cpu_times, "load": list(os.getloadavg()),
+            "mem_total": meminfo.get("MemTotal"), "mem_available": meminfo.get("MemAvailable")}
