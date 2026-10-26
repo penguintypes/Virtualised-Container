@@ -47,11 +47,14 @@ const toggleBtn = c => c.status === 'running'
 
 function containerTable(list) {
   if (!list.length) return '<div class="empty">No containers yet.</div>';
-  const rows = list.map(c => `<tr><td>${dot(c.status)}</td>
-    <td><a href="#/containers/${enc(c.id)}">${esc(c.name)}</a></td><td>${esc(c.image || '—')}</td>
-    <td>${portLinks(c)}</td><td>${esc(c.memory || '—')}</td>
+  const rows = list.map(c => `<tr>
+    <td><span class="pill ${esc(c.status)}">${esc(c.status)}</span></td>
+    <td><a class="rname" href="#/containers/${enc(c.id)}">${esc(c.name)}</a></td>
+    <td><span class="chip">${esc(c.image || '—')}</span></td>
+    <td class="mono">${portLinks(c)}</td>
+    <td class="mono ${c.memory ? '' : 'muted'}">${esc(c.memory || 'No limit')}</td>
     <td class="act">${toggleBtn(c)}<button class="danger" data-act="delete" data-id="${esc(c.id)}">Delete</button></td></tr>`).join('');
-  return `<table><tr><th>Status</th><th>Name</th><th>Image</th><th>Ports</th><th>Mem limit</th><th></th></tr>${rows}</table>`;
+  return `<table><tr><th>Status</th><th>Name</th><th>Image</th><th>Ports</th><th>Memory limit</th><th></th></tr>${rows}</table>`;
 }
 
 const meter = (label, used, limit, fmt) => {
@@ -98,6 +101,9 @@ function containerCard(c, s) {
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const level = p => (p >= 90 ? 'hot' : p >= 70 ? 'warm' : '');
 let cpuPrev = null;
+let wasOffline = false;
+const OFF = [['g-cpu', 'Host CPU'], ['g-mem', 'Host memory'], ['g-pid', 'Process IDs'], ['g-cmem', 'Container memory']];
+const offlineGauges = () => OFF.map(([t, l]) => gauge(t + ' off', l, '—', 'Backend offline', null)).join('');
 
 function cpuPct(a, b) {
   const sum = x => x.reduce((p, q) => p + q, 0);
@@ -123,6 +129,7 @@ async function drawGauges(ids) {
   try {
     const [[sys, cpu], stats] = await Promise.all([sample(),
       Promise.all(ids.map(id => api(`/containers/${enc(id)}/stats`).catch(() => null)))]);
+    if (wasOffline) { wasOffline = false; return route(); }
     const ok = stats.filter(Boolean);
     const cmem = ok.reduce((a, s) => a + (s.memory_bytes || 0), 0);
     const pids = ok.reduce((a, s) => a + (s.pids || 0), 0);
@@ -136,25 +143,37 @@ async function drawGauges(ids) {
       gauge('g-pid', 'Process IDs', pids, pidCap ? `of ${pidCap} allowed, ${ok.length} running` : `in ${ok.length} running container${ok.length === 1 ? '' : 's'}`,
         pidCap ? Math.round(pids / pidCap * 100) : null) +
       gauge('g-cmem', 'Container memory', bytes(cmem), `${cPct}% of host RAM`, cPct);
-  } catch (e) { if (el) el.innerHTML = ''; }
+  } catch (e) {
+    wasOffline = true;
+    if (el) el.innerHTML = offlineGauges();
+    document.querySelectorAll('.tile .big').forEach(t => { t.textContent = '—'; });
+    const grid = document.querySelector('.cgrid');
+    if (grid) grid.classList.add('stale');
+  }
 }
 
 async function home() {
   $('#title').textContent = 'Home';
-  const [cs, imgs] = await Promise.all([api('/containers'), api('/images')]);
+  wasOffline = false;
+  let data = null;
+  try { data = await Promise.all([api('/containers'), api('/images')]); } catch (e) {}
+  const off = !data;
+  const [cs, imgs] = data || [[], []];
   const running = cs.filter(c => c.status === 'running');
   const ids = running.map(c => c.id);
   const stats = {};
   await Promise.all(running.map(async c => { stats[c.id] = await api(`/containers/${enc(c.id)}/stats`).catch(() => null); }));
-  const quick = [['blog', '8081:8081'], ['runner', '8082:8082']].filter(([n]) => imgs.some(i => i.name === n));
+  const quick = off ? [] : [['blog', '8081:8081'], ['runner', '8082:8082']].filter(([n]) => imgs.some(i => i.name === n));
   const ordered = [...cs].sort((a, b) => (b.status === 'running') - (a.status === 'running'));
+  const val = v => (off ? '—' : v);
   $('#view').innerHTML = `<div class="tiles">
-    <div class="card tile t-ok"><div class="muted">Running</div><div class="big">${running.length}</div></div>
-    <div class="card tile t-bad"><div class="muted">Stopped</div><div class="big">${cs.length - running.length}</div></div>
-    <div class="card tile t-lav"><div class="muted">Images</div><div class="big">${imgs.length}</div></div></div>
+    <div class="card tile t-ok"><div class="muted">Running</div><div class="big">${val(running.length)}</div></div>
+    <div class="card tile t-bad"><div class="muted">Stopped</div><div class="big">${val(cs.length - running.length)}</div></div>
+    <div class="card tile t-lav"><div class="muted">Images</div><div class="big">${val(imgs.length)}</div></div></div>
     <div id="gauges" class="gauges"></div>
     ${quick.length ? `<div class="card"><b>Quick start</b> ${quick.map(([n, p]) => `<button data-act="quick" data-img="${n}" data-port="${p}">Run ${n}</button>`).join(' ')}</div>` : ''}
-    <h3>Containers</h3>${cs.length ? `<div class="cgrid">${ordered.map(c => containerCard(c, stats[c.id])).join('')}</div>` : '<div class="empty">No containers yet.</div>'}`;
+    <h3>Containers</h3>${off ? '<div class="empty">Backend offline. Start it with ./start.sh</div>'
+      : cs.length ? `<div class="cgrid">${ordered.map(c => containerCard(c, stats[c.id])).join('')}</div>` : '<div class="empty">No containers yet.</div>'}`;
   cpuPrev = null;
   try { await sample(); await sleep(400); } catch (e) {}
   await drawGauges(ids);
@@ -220,10 +239,14 @@ async function images() {
   $('#title').textContent = 'Images';
   $('#actions').innerHTML = '<button data-act="upload">Upload .tar</button> <button class="primary" data-act="build">Build from Vcfile</button>';
   const xs = await api('/images');
-  $('#view').innerHTML = `<table><tr><th>Name</th><th>Size</th><th>Created</th><th>Command</th><th></th></tr>${xs.map(x => `<tr>
-    <td>${esc(x.name)}</td><td>${bytes(x.size)}</td><td>${esc(x.created || '—')}</td><td><code>${esc((x.cmd || []).join(' '))}</code></td>
+  const rows = xs.map(x => `<tr>
+    <td><span class="rname">${esc(x.name)}</span></td>
+    <td class="mono">${bytes(x.size)}</td>
+    <td class="mono muted">${esc(String(x.created || '—').replace('T', ' ').slice(0, 16))}</td>
+    <td class="mono"><code>${esc((x.cmd || []).join(' '))}</code></td>
     <td class="act"><a href="/images/${enc(x.name)}/download" download="${esc(x.name)}.tar"><button>Download</button></a>
-    <button class="danger" data-act="delimg" data-id="${esc(x.name)}">Delete</button></td></tr>`).join('')}</table>`;
+    <button class="danger" data-act="delimg" data-id="${esc(x.name)}">Delete</button></td></tr>`).join('');
+  $('#view').innerHTML = `<table><tr><th>Name</th><th>Size</th><th>Created (UTC)</th><th>Command</th><th></th></tr>${rows}</table>`;
 }
 
 async function route() {
