@@ -95,22 +95,70 @@ function containerCard(c, s) {
     <div class="cbtns"><button data-act="open" data-id="${id}">Details</button>${toggleBtn(c)}<button class="danger" data-act="delete" data-id="${id}">Delete</button></div></article>`;
 }
 
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const level = p => (p >= 90 ? 'hot' : p >= 70 ? 'warm' : '');
+let cpuPrev = null;
+
+function cpuPct(a, b) {
+  const sum = x => x.reduce((p, q) => p + q, 0);
+  const total = sum(b) - sum(a);
+  const idle = (b[3] + b[4]) - (a[3] + a[4]);
+  return total > 0 ? Math.max(0, Math.min(100, Math.round(100 * (1 - idle / total)))) : null;
+}
+
+async function sample() {
+  const s = await api('/system');
+  const pct = cpuPrev ? cpuPct(cpuPrev, s.cpu_times) : null;
+  cpuPrev = s.cpu_times;
+  return [s, pct];
+}
+
+function gauge(tone, label, value, sub, pct) {
+  return `<div class="card gauge ${tone}"><div class="between"><span class="muted">${label}</span><span class="gv">${value}</span></div>
+    <div class="bar ${pct != null ? level(pct) : ''}">${pct != null ? `<i style="width:${pct}%"></i>` : ''}</div><div class="muted sub">${sub}</div></div>`;
+}
+
+async function drawGauges(ids) {
+  const el = $('#gauges');
+  try {
+    const [[sys, cpu], stats] = await Promise.all([sample(),
+      Promise.all(ids.map(id => api(`/containers/${enc(id)}/stats`).catch(() => null)))]);
+    const ok = stats.filter(Boolean);
+    const cmem = ok.reduce((a, s) => a + (s.memory_bytes || 0), 0);
+    const pids = ok.reduce((a, s) => a + (s.pids || 0), 0);
+    const pidCap = ok.length && ok.every(s => s.pid_limit) ? ok.reduce((a, s) => a + s.pid_limit, 0) : 0;
+    const used = sys.mem_total - sys.mem_available;
+    const memPct = Math.round(used / sys.mem_total * 100);
+    const cPct = Math.min(100, Math.round(cmem / sys.mem_total * 100));
+    if (el) el.innerHTML =
+      gauge('g-cpu', 'Host CPU', cpu == null ? '…' : cpu + '%', `${sys.cpus} cores · load ${sys.load[0].toFixed(2)}`, cpu) +
+      gauge('g-mem', 'Host memory', memPct + '%', `${bytes(used)} of ${bytes(sys.mem_total)} used`, memPct) +
+      gauge('g-pid', 'Process IDs', pids, pidCap ? `of ${pidCap} allowed, ${ok.length} running` : `in ${ok.length} running container${ok.length === 1 ? '' : 's'}`,
+        pidCap ? Math.round(pids / pidCap * 100) : null) +
+      gauge('g-cmem', 'Container memory', bytes(cmem), `${cPct}% of host RAM`, cPct);
+  } catch (e) { if (el) el.innerHTML = ''; }
+}
+
 async function home() {
   $('#title').textContent = 'Home';
   const [cs, imgs] = await Promise.all([api('/containers'), api('/images')]);
   const running = cs.filter(c => c.status === 'running');
+  const ids = running.map(c => c.id);
   const stats = {};
   await Promise.all(running.map(async c => { stats[c.id] = await api(`/containers/${enc(c.id)}/stats`).catch(() => null); }));
-  const mem = Object.values(stats).reduce((a, s) => a + (s?.memory_bytes || 0), 0);
   const quick = [['blog', '8081:8081'], ['runner', '8082:8082']].filter(([n]) => imgs.some(i => i.name === n));
   const ordered = [...cs].sort((a, b) => (b.status === 'running') - (a.status === 'running'));
   $('#view').innerHTML = `<div class="tiles">
-    <div class="card"><div class="muted">Running</div><div class="big">${running.length}</div></div>
-    <div class="card"><div class="muted">Stopped</div><div class="big">${cs.length - running.length}</div></div>
-    <div class="card"><div class="muted">Images</div><div class="big">${imgs.length}</div></div>
-    <div class="card"><div class="muted">Memory in use</div><div class="big">${bytes(mem)}</div></div></div>
+    <div class="card tile t-ok"><div class="muted">Running</div><div class="big">${running.length}</div></div>
+    <div class="card tile t-bad"><div class="muted">Stopped</div><div class="big">${cs.length - running.length}</div></div>
+    <div class="card tile t-lav"><div class="muted">Images</div><div class="big">${imgs.length}</div></div></div>
+    <div id="gauges" class="gauges"></div>
     ${quick.length ? `<div class="card"><b>Quick start</b> ${quick.map(([n, p]) => `<button data-act="quick" data-img="${n}" data-port="${p}">Run ${n}</button>`).join(' ')}</div>` : ''}
     <h3>Containers</h3>${cs.length ? `<div class="cgrid">${ordered.map(c => containerCard(c, stats[c.id])).join('')}</div>` : '<div class="empty">No containers yet.</div>'}`;
+  cpuPrev = null;
+  try { await sample(); await sleep(400); } catch (e) {}
+  await drawGauges(ids);
+  every(3000, () => drawGauges(ids));
 }
 
 async function containers() {
