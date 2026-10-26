@@ -34,9 +34,10 @@ function setTheme(t) {
 }
 try { setTheme(localStorage.getItem('vc-theme') || 'dark'); } catch (e) {}
 
-let timer = null;
+let timers = [];
 let hist = {mem: [], pid: []};
-const every = (ms, fn) => { clearInterval(timer); timer = setInterval(fn, ms); };
+const every = (ms, fn) => timers.push(setInterval(fn, ms));
+const stopTimers = () => { timers.forEach(clearInterval); timers = []; };
 
 const dot = s => `<span class="dot ${esc(s)}"></span>${esc(s)}`;
 const portLinks = c => (c.ports || []).map(p => `<a target="_blank" rel="noopener" href="http://localhost:${esc(p.split(':')[0])}">${esc(p)}</a>`).join(', ') || '—';
@@ -53,21 +54,51 @@ function containerTable(list) {
   return `<table><tr><th>Status</th><th>Name</th><th>Image</th><th>Ports</th><th>Mem limit</th><th></th></tr>${rows}</table>`;
 }
 
+const meter = (label, used, limit, fmt) => {
+  const pct = limit && used != null ? Math.min(100, used / limit * 100) : 0;
+  return `<div class="meter"><div class="between"><span class="muted">${label}</span><span>${fmt(used)} / ${limit ? fmt(limit) : 'no limit'}</span></div>${limit ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ''}</div>`;
+};
+
+function detailsList(c, s) {
+  const mem = s ? (s.memory_limit_bytes ? bytes(s.memory_limit_bytes) : 'none') : (c.memory || 'none');
+  const cpu = s ? (s.cpu_limit || 'none') : (c.cpus || 'none');
+  const pids = s ? (s.pid_limit ?? 'none') : (c.pids || 'none');
+  const rows = [['ID', esc(c.id)], ['Image', esc(c.image || '—')], ['Created', esc(c.created || '—')], ['PID', esc(c.pid ?? '—')],
+    ['Ports', portLinks(c)], ['Command', `<code>${esc((c.command || []).join(' ') || '—')}</code>`],
+    ['Memory limit', esc(mem)], ['CPU limit', esc(cpu)], ['PIDs limit', esc(pids)]];
+  return `<dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`;
+}
+
+function execBox(c) {
+  if (c.status !== 'running') return '<p class="muted">Start the container to run commands.</p>';
+  return `<form class="exec cx" data-id="${esc(c.id)}"><input placeholder="Run a command, e.g. ls -la /" required autocomplete="off"><button class="primary">Run</button></form><pre class="out hidden"></pre>`;
+}
+
+function containerCard(c, s) {
+  const id = esc(c.id);
+  return `<article class="card ccard"><div class="cmain">
+    <div class="chead"><div><a class="cname" href="#/containers/${enc(c.id)}">${esc(c.name)}</a><div class="muted">${dot(c.status)}</div></div>
+    <div class="cbtns"><button data-act="open" data-id="${id}">Details</button>${toggleBtn(c)}<button class="danger" data-act="delete" data-id="${id}">Delete</button></div></div>
+    ${execBox(c)}</div>
+    <div class="cside">${s ? meter('Memory', s.memory_bytes, s.memory_limit_bytes, bytes) + meter('PIDs', s.pids, s.pid_limit, n => n ?? '—') : ''}${detailsList(c, s)}</div></article>`;
+}
+
 async function home() {
   $('#title').textContent = 'Home';
   const [cs, imgs] = await Promise.all([api('/containers'), api('/images')]);
   const running = cs.filter(c => c.status === 'running');
-  const stats = await Promise.all(running.map(c => api(`/containers/${enc(c.id)}/stats`).catch(() => ({}))));
-  const mem = stats.reduce((a, s) => a + (s.memory_bytes || 0), 0);
+  const stats = {};
+  await Promise.all(running.map(async c => { stats[c.id] = await api(`/containers/${enc(c.id)}/stats`).catch(() => null); }));
+  const mem = Object.values(stats).reduce((a, s) => a + (s?.memory_bytes || 0), 0);
   const quick = [['blog', '8081:8081'], ['runner', '8082:8082']].filter(([n]) => imgs.some(i => i.name === n));
-  const recent = [...cs].sort((a, b) => String(b.created).localeCompare(String(a.created))).slice(0, 5);
+  const ordered = [...cs].sort((a, b) => (b.status === 'running') - (a.status === 'running'));
   $('#view').innerHTML = `<div class="tiles">
     <div class="card"><div class="muted">Running</div><div class="big">${running.length}</div></div>
     <div class="card"><div class="muted">Stopped</div><div class="big">${cs.length - running.length}</div></div>
     <div class="card"><div class="muted">Images</div><div class="big">${imgs.length}</div></div>
     <div class="card"><div class="muted">Memory in use</div><div class="big">${bytes(mem)}</div></div></div>
     ${quick.length ? `<div class="card"><b>Quick start</b> ${quick.map(([n, p]) => `<button data-act="quick" data-img="${n}" data-port="${p}">Run ${n}</button>`).join(' ')}</div>` : ''}
-    <h3>Recent containers</h3>${containerTable(recent)}`;
+    <h3>Containers</h3>${cs.length ? `<div class="cgrid">${ordered.map(c => containerCard(c, stats[c.id])).join('')}</div>` : '<div class="empty">No containers yet.</div>'}`;
 }
 
 async function containers() {
@@ -91,63 +122,38 @@ function statCard(label, used, limit, series, fmt) {
     ${limit ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ''}${spark(series)}</div>`;
 }
 
-async function detail(id, tab) {
+async function detail(id) {
   const c = await api('/containers/' + enc(id));
-  $('#title').innerHTML = `${esc(c.name)} <small class="muted">${dot(c.status)}</small>`;
-  $('#actions').innerHTML = toggleBtn(c) + ` <button class="danger" data-act="delete" data-id="${esc(c.id)}" data-back="1">Delete</button>`;
-  const tabs = ['overview', 'logs', 'stats', 'exec'].map(t =>
-    `<a href="#/containers/${enc(id)}/${t}" class="${t === tab ? 'on' : ''}">${t[0].toUpperCase() + t.slice(1)}</a>`).join('');
-  $('#view').innerHTML = `<div class="tabs">${tabs}</div><div id="pane"></div>`;
-  const pane = $('#pane');
   const running = c.status === 'running';
-
-  if (tab === 'logs') {
-    pane.innerHTML = '<p><button data-act="reload">Refresh</button></p><pre id="log">Loading…</pre>';
-    const load = async () => {
-      const el = $('#log');
-      if (!el) return;
-      el.textContent = (await api(`/containers/${enc(id)}/logs`)).logs || '(no output)';
-      el.scrollTop = el.scrollHeight;
-    };
-    await load();
-    if (running) every(3000, () => load().catch(() => {}));
-  } else if (tab === 'stats') {
-    if (!running) { pane.innerHTML = '<div class="empty">Container is not running.</div>'; return; }
-    hist = {mem: [], pid: []};
-    const tick = async () => {
-      const s = await api(`/containers/${enc(id)}/stats`);
-      hist.mem.push(s.memory_bytes || 0); hist.pid.push(s.pids || 0);
-      hist.mem = hist.mem.slice(-60); hist.pid = hist.pid.slice(-60);
-      const el = $('#pane');
-      if (el) el.innerHTML = `<div class="stats">
-        ${statCard('Memory', s.memory_bytes, s.memory_limit_bytes, hist.mem, bytes)}
-        ${statCard('PIDs', s.pids, s.pid_limit, hist.pid, n => n ?? '—')}
-        <div class="card"><div class="muted">CPU limit</div><div class="big">${esc(s.cpu_limit || 'none')}</div>
-        <div class="muted">quota / period (µs). Usage is not exposed by the API.</div></div></div>`;
-    };
-    await tick();
-    every(2000, () => tick().catch(() => {}));
-  } else if (tab === 'exec') {
-    pane.innerHTML = running
-      ? '<form class="exec" id="execform"><input id="cmd" placeholder="ls -la /" required autocomplete="off"><button class="primary" id="execgo">Run</button></form><pre id="out">Output appears here.</pre>'
-      : '<div class="empty">Container is not running.</div>';
-    const form = $('#execform');
-    if (form) form.onsubmit = async e => {
-      e.preventDefault();
-      await busy($('#execgo'), 'Running…', async () => {
-        try {
-          const r = await api(`/containers/${enc(id)}/exec`, {method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({command: ['/bin/sh', '-c', $('#cmd').value]})});
-          $('#out').textContent = `$ ${$('#cmd').value}\n${r.stdout}${r.stderr}[exit ${r.code}]`;
-        } catch (x) { toast(x.message); }
-      });
-    };
-  } else {
-    const rows = [['Status', dot(c.status)], ['ID', esc(c.id)], ['Image', esc(c.image || '—')], ['Created', esc(c.created || '—')],
-      ['PID', esc(c.pid ?? '—')], ['Ports', portLinks(c)], ['Command', `<code>${esc((c.command || []).join(' ') || '—')}</code>`],
-      ['Memory limit', esc(c.memory || 'none')], ['CPUs', esc(c.cpus || 'none')], ['PIDs limit', esc(c.pids || 'none')]];
-    pane.innerHTML = `<div class="card"><dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl></div>`;
-  }
+  const s = running ? await api(`/containers/${enc(id)}/stats`).catch(() => null) : null;
+  $('#title').innerHTML = `<a class="back" href="#/containers">←</a>${esc(c.name)} <small class="muted">${dot(c.status)}</small>`;
+  $('#actions').innerHTML = toggleBtn(c) + ` <button class="danger" data-act="delete" data-id="${esc(c.id)}" data-back="1">Delete</button>`;
+  $('#view').innerHTML = `<div class="split"><div class="col">
+      <div class="card"><h3>Console</h3>${execBox(c)}</div>
+      <div class="card"><div class="between"><h3>Logs</h3><button data-act="reload">Refresh</button></div><pre id="log">Loading…</pre></div>
+    </div><div class="col">
+      <div class="card"><h3>Details</h3>${detailsList(c, s)}</div>
+      <div id="res" class="col"></div></div></div>`;
+  const loadLogs = async () => {
+    const el = $('#log');
+    if (!el) return;
+    el.textContent = (await api(`/containers/${enc(id)}/logs`)).logs || '(no output)';
+    el.scrollTop = el.scrollHeight;
+  };
+  await loadLogs();
+  if (!running) return;
+  hist = {mem: [], pid: []};
+  const tick = async () => {
+    const st = await api(`/containers/${enc(id)}/stats`);
+    hist.mem.push(st.memory_bytes || 0); hist.pid.push(st.pids || 0);
+    hist.mem = hist.mem.slice(-60); hist.pid = hist.pid.slice(-60);
+    const el = $('#res');
+    if (el) el.innerHTML = statCard('Memory', st.memory_bytes, st.memory_limit_bytes, hist.mem, bytes)
+      + statCard('PIDs', st.pids, st.pid_limit, hist.pid, n => n ?? '—');
+  };
+  await tick();
+  every(2000, () => tick().catch(() => {}));
+  every(4000, () => loadLogs().catch(() => {}));
 }
 
 async function images() {
@@ -161,7 +167,7 @@ async function images() {
 }
 
 async function route() {
-  clearInterval(timer);
+  stopTimers();
   const [page, id, tab] = location.hash.replace(/^#\//, '').split('/');
   const name = page || 'home';
   document.querySelectorAll('[data-nav]').forEach(a => a.classList.toggle('on', a.dataset.nav === name));
@@ -185,6 +191,7 @@ document.addEventListener('click', async e => {
     if (act === 'theme') setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
     else if (act === 'close') $('#' + dlg).close();
     else if (act === 'reload') route();
+    else if (act === 'open') location.hash = '#/containers/' + enc(id);
     else if (act === 'build') $('#build').showModal();
     else if (act === 'upload') $('#up').click();
     else if (act === 'run') {
@@ -240,13 +247,35 @@ $('#up').addEventListener('change', async e => {
 });
 
 window.addEventListener('hashchange', route);
-(async function boot() {
+document.addEventListener('submit', async e => {
+  const form = e.target;
+  if (!form.classList.contains('cx')) return;
+  const input = form.querySelector('input');
+  const out = form.nextElementSibling;
+  await busy(form.querySelector('button'), 'Running…', async () => {
+    try {
+      const r = await api(`/containers/${enc(form.dataset.id)}/exec`, {method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({command: ['/bin/sh', '-c', input.value]})});
+      out.classList.remove('hidden');
+      out.textContent = `$ ${input.value}\n${r.stdout}${r.stderr}[exit ${r.code}]`;
+    } catch (x) { toast(x.message); }
+  });
+});
+
+async function health() {
   try {
     const h = await api('/health');
-    $('#health').textContent = h.capabilities.cgroups_v2 ? '● limits available' : '● cgroups unavailable';
+    const caps = h.capabilities || {};
+    const items = [['Namespaces', caps.namespaces], ['cgroups v2', caps.cgroups_v2], ['OverlayFS', caps.overlayfs], ['Networking', caps.network_tools]];
+    $('#health').innerHTML = `<div class="sys"><div class="between"><b>System</b><span class="ok">● Online</span></div>${items.map(([n, v]) =>
+      `<div class="between"><span>${n}</span><span class="${v ? 'ok' : 'bad'}">${v ? '✓' : '✗'}</span></div>`).join('')}</div>`;
+    $('#banner').classList.add('hidden');
   } catch (e) {
+    $('#health').innerHTML = '<div class="sys"><div class="between"><b>System</b><span class="bad">● Offline</span></div></div>';
     $('#banner').textContent = 'Backend unavailable: ' + e.message;
     $('#banner').classList.remove('hidden');
   }
-  route();
-})();
+}
+health();
+route();
+setInterval(health, 10000);
