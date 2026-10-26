@@ -36,6 +36,7 @@ try { setTheme(localStorage.getItem('vc-theme') || 'dark'); } catch (e) {}
 
 let timers = [];
 let hist = {mem: [], pid: []};
+let reloadLogs = null;
 const every = (ms, fn) => timers.push(setInterval(fn, ms));
 const stopTimers = () => { timers.forEach(clearInterval); timers = []; };
 
@@ -62,12 +63,17 @@ const meter = (label, used, limit, fmt) => {
   return `<div class="meter"><div class="between"><span class="muted">${label}</span><span>${fmt(used)} / ${limit ? fmt(limit) : 'no limit'}</span></div>${limit ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ''}</div>`;
 };
 
+function openBtn(c) {
+  const hp = ((c.ports || [])[0] || '').split(':')[0];
+  return c.status === 'running' && hp ? ` <a class="btn primary sm" target="_blank" rel="noopener" href="http://localhost:${esc(hp)}">Open ↗</a>` : '';
+}
+
 function detailsList(c, s) {
   const mem = s ? (s.memory_limit_bytes ? bytes(s.memory_limit_bytes) : 'none') : (c.memory || 'none');
   const cpu = s ? (s.cpu_limit || 'none') : (c.cpus || 'none');
   const pids = s ? (s.pid_limit ?? 'none') : (c.pids || 'none');
   const rows = [['ID', esc(c.id)], ['Image', esc(c.image || '—')], ['Created', esc(c.created || '—')], ['PID', esc(c.pid ?? '—')],
-    ['Ports', portLinks(c)], ['Command', `<code>${esc((c.command || []).join(' ') || '—')}</code>`],
+    ['Ports', portLinks(c) + openBtn(c)], ['Command', `<code>${esc((c.command || []).join(' ') || '—')}</code>`],
     ['Memory limit', esc(mem)], ['CPU limit', esc(cpu)], ['PIDs limit', esc(pids)]];
   return `<dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`;
 }
@@ -92,7 +98,7 @@ function containerCard(c, s) {
     : miniBar('Memory', s.memory_bytes, s.memory_limit_bytes, bytes) + miniBar('PIDs', s.pids, s.pid_limit, n => n ?? '—');
   return `<article class="card ccard">
     <div class="chead"><div><a class="cname" href="#/containers/${enc(c.id)}">${esc(c.name)}</a>
-      <div class="muted">${dot(c.status)} · ${esc(c.image || '—')}</div></div>
+      <div class="meta"><span class="pill ${esc(c.status)}">${esc(c.status)}</span> <span class="chip">${esc(c.image || '—')}</span></div></div>
       ${running && hostPort ? `<a class="btn primary" target="_blank" rel="noopener" href="http://localhost:${esc(hostPort)}">Open :${esc(hostPort)} ↗</a>` : ''}</div>
     ${bars}
     <div class="cbtns"><button data-act="open" data-id="${id}">Details</button>${toggleBtn(c)}<button class="danger" data-act="delete" data-id="${id}">Delete</button></div></article>`;
@@ -169,7 +175,8 @@ async function home() {
   $('#view').innerHTML = `<div class="tiles">
     <div class="card tile t-ok"><div class="muted">Running</div><div class="big">${val(running.length)}</div></div>
     <div class="card tile t-bad"><div class="muted">Stopped</div><div class="big">${val(cs.length - running.length)}</div></div>
-    <div class="card tile t-lav"><div class="muted">Images</div><div class="big">${val(imgs.length)}</div></div></div>
+    <div class="card tile t-lav"><div class="muted">Images</div><div class="big">${val(imgs.length)}</div></div>
+    <div class="card tile t-pink"><div class="muted">Image storage</div><div class="big">${val(bytes(imgs.reduce((a, i) => a + (i.size || 0), 0)))}</div></div></div>
     <div id="gauges" class="gauges"></div>
     ${quick.length ? `<div class="card"><b>Quick start</b> ${quick.map(([n, p]) => `<button data-act="quick" data-img="${n}" data-port="${p}">Run ${n}</button>`).join(' ')}</div>` : ''}
     <h3>Containers</h3>${off ? '<div class="empty">Backend offline. Start it with ./start.sh</div>'
@@ -208,17 +215,21 @@ async function detail(id) {
   $('#title').innerHTML = `<a class="back" href="#/containers">←</a>${esc(c.name)} <small class="muted">${dot(c.status)}</small>`;
   $('#actions').innerHTML = toggleBtn(c) + ` <button class="danger" data-act="delete" data-id="${esc(c.id)}" data-back="1">Delete</button>`;
   $('#view').innerHTML = `<div class="split"><div class="col">
+      <div class="card"><div class="between"><h3>Logs <small id="lognote" class="muted"></small></h3><button data-act="logs">Refresh</button></div><pre id="log">Loading…</pre></div>
       <div class="card"><h3>Console</h3>${execBox(c)}</div>
-      <div class="card"><div class="between"><h3>Logs</h3><button data-act="reload">Refresh</button></div><pre id="log">Loading…</pre></div>
     </div><div class="col">
       <div class="card"><h3>Details</h3>${detailsList(c, s)}</div>
       <div id="res" class="col"></div></div></div>`;
+  const LOG_LINES = 10;
   const loadLogs = async () => {
     const el = $('#log');
     if (!el) return;
-    el.textContent = (await api(`/containers/${enc(id)}/logs`)).logs || '(no output)';
-    el.scrollTop = el.scrollHeight;
+    const lines = ((await api(`/containers/${enc(id)}/logs`)).logs || '').split('\n').filter(Boolean);
+    el.textContent = lines.length ? lines.slice(-LOG_LINES).join('\n') : '(no output)';
+    const note = $('#lognote');
+    if (note) note.textContent = lines.length > LOG_LINES ? `last ${LOG_LINES} of ${lines.length} lines` : '';
   };
+  reloadLogs = loadLogs;
   await loadLogs();
   if (!running) return;
   hist = {mem: [], pid: []};
@@ -235,18 +246,35 @@ async function detail(id) {
   every(4000, () => loadLogs().catch(() => {}));
 }
 
+const ago = iso => {
+  const t = Date.parse(iso);
+  if (!t) return '';
+  const d = (Date.now() - t) / 1000;
+  if (d < 3600) return Math.max(1, Math.round(d / 60)) + 'm ago';
+  if (d < 86400) return Math.round(d / 3600) + 'h ago';
+  return Math.round(d / 86400) + 'd ago';
+};
+
 async function images() {
   $('#title').textContent = 'Images';
   $('#actions').innerHTML = '<button data-act="upload">Upload .tar</button><button class="primary" data-act="build">Build from VC File</button>';
-  const xs = await api('/images');
-  const rows = xs.map(x => `<tr>
-    <td data-label="Name"><span class="rname">${esc(x.name)}</span></td>
-    <td data-label="Size" class="mono">${bytes(x.size)}</td>
-    <td data-label="Created (UTC)" class="mono muted">${esc(String(x.created || '—').replace('T', ' ').slice(0, 16))}</td>
-    <td data-label="Command" class="mono"><code>${esc((x.cmd || []).join(' '))}</code></td>
+  const [xs, cs] = await Promise.all([api('/images'), api('/containers').catch(() => [])]);
+  const rows = xs.map(x => {
+    const mine = cs.filter(c => c.image === x.name);
+    const run = mine.filter(c => c.status === 'running').length;
+    const use = run ? `<span class="pill use">${run} running</span>` : `<span class="pill">${mine.length ? mine.length + ' stopped' : 'unused'}</span>`;
+    const when = String(x.created || '—').replace('T', ' ').slice(0, 16);
+    const age = ago(x.created);
+    return `<tr>
+    <td data-label="Name"><span class="rname rimg">${esc(x.name)}</span></td>
+    <td data-label="Size"><span class="chip size">${bytes(x.size)}</span></td>
+    <td data-label="Created (UTC)" class="mono">${esc(when)}${age ? ` <span class="muted">· ${esc(age)}</span>` : ''}</td>
+    <td data-label="Command"><span class="chip cmd">${esc((x.cmd || []).join(' '))}</span></td>
+    <td data-label="In use">${use}</td>
     <td class="act"><a href="/images/${enc(x.name)}/download" download="${esc(x.name)}.tar"><button>Download</button></a>
-    <button class="danger" data-act="delimg" data-id="${esc(x.name)}">Delete</button></td></tr>`).join('');
-  $('#view').innerHTML = `<table><tr class="hd"><th>Name</th><th>Size</th><th>Created (UTC)</th><th>Command</th><th></th></tr>${rows}</table>`;
+    <button class="danger" data-act="delimg" data-id="${esc(x.name)}">Delete</button></td></tr>`;
+  }).join('');
+  $('#view').innerHTML = `<table><tr class="hd"><th>Name</th><th>Size</th><th>Created (UTC)</th><th>Command</th><th>In use</th><th></th></tr>${rows}</table>`;
 }
 
 async function route() {
@@ -274,6 +302,7 @@ document.addEventListener('click', async e => {
     if (act === 'theme') setTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
     else if (act === 'close') $('#' + dlg).close();
     else if (act === 'reload') route();
+    else if (act === 'logs') { if (reloadLogs) await reloadLogs(); }
     else if (act === 'open') location.hash = '#/containers/' + enc(id);
     else if (act === 'build') $('#build').showModal();
     else if (act === 'upload') $('#up').click();
