@@ -71,3 +71,5 @@ The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments
 - fix: persist container resource limits (memory, cpus, pids) in engine.json and restore them on restart
 - fix: run_container.sh passes --seccomp by default, so containers block mount, pivot_root, ptrace, unshare, setns and module syscalls and set no_new_privs
 - feat: Portainer-inspired dashboard (Home, container detail with logs/stats/exec, images upload/download, dark/light theme)
+- feat: Portainer-inspired dashboard (Home, container detail with logs/stats/exec, images upload/download, dark/light theme)
+- feat: Home container cards with exec and details, single-page container detail, sidebar system panel, fix PIDs limit display
