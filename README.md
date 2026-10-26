@@ -10,8 +10,9 @@ bash install.sh
 ```
 
 - **Dashboard:** `http://localhost:8080`
+- **Start:** `./start.sh` launches only the dashboard. Start the demo containers from Quick start on Home (blog on 8081, runner on 8082).
 - **Install (WSL2 Ubuntu or Linux):** `git clone -b parzivalSr-test https://github.com/penguintypes/Virtualised-Container.git && cd Virtualised-Container && bash install.sh` (the repo is private for now, so cloning needs access).
-- **Windows:** run `install.ps1` in PowerShell; it runs `install.sh` inside WSL Ubuntu. `install.exe` is not in the repo; build it locally with `makensis install.nsi` (NSIS offline installer, bundles the local repository during build). `install.ps1` is tested from a WSL UNC path; `install.exe` and `C:\` paths are tested; the supported path is `git clone` plus `bash install.sh`.
+- **Windows:** run `install.ps1` in PowerShell; it runs `install.sh` inside WSL Ubuntu. `install.exe` is not in the repo; build it locally with `makensis install.nsi` (NSIS offline installer, bundles the local repository during build). `install.ps1` and `install.exe` are tested on Windows (WSL UNC and `C:\` paths). Defender may quarantine `install.exe`, so the supported path stays `git clone` plus `bash install.sh`.
 
 ## Architecture
 
@@ -38,20 +39,36 @@ Containers and images can be managed via the Web Dashboard (`http://localhost:80
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/health` | Capabilities and runtime health |
+| GET | `/system` | Host CPU times, load and memory (read from `/proc`, no sudo) |
 | GET | `/images` | List cached and built image metadata |
-| POST | `/images/build` | Build image from Vcfile: `{"file":"samples/blog/Vcfile"}` |
+| POST | `/images/build` | Build image from Vcfile: `{"file":"samples/blog/Vcfile","clean":false,"update":false}` |
+| POST | `/images/{name}/upload` | Import an image from a `.tar` sent as the request body |
+| GET | `/images/{name}/download` | Download an image as a `.tar` |
 | DELETE | `/images/{name}` | Remove an image |
-| GET | `/containers` | List active and exited container records |
-| POST | `/containers` | Create/run container: `{"name":"demo","image":"alpine","command":"..."}` |
+| GET | `/containers` | List container records (status `running` or `stopped`) |
+| POST | `/containers` | Create/run container: `{"name":"demo","image":"alpine","command":["/bin/sh","-c","..."]}`; optional `memory`, `cpus`, `pids`, `port` |
+| GET | `/containers/{name}` | Container details |
+| POST | `/containers/{name}` | Start a stopped container (its limits are kept) |
 | POST | `/containers/{name}/stop` | Stop a running container |
-| DELETE | `/containers/{name}` | Remove container state and mounts |
-| GET | `/containers/{name}/stats` | Live cgroup v2 CPU and memory statistics |
+| DELETE | `/containers/{name}` | Stop if running, then remove state and mounts |
+| GET | `/containers/{name}/stats` | Live memory and PID usage with their limits, plus the CPU limit (no CPU usage) |
 | GET | `/containers/{name}/logs` | Fetch container stdout/stderr |
-| POST | `/containers/{name}/exec` | Execute command in existing container |
+| POST | `/containers/{name}/exec` | Run a command in a running container (honors its limits) |
 
 Sample containers:
 - **Blog:** Python 3 + SQLite (`http://localhost:8081`)
 - **Runner:** Multi-language test runner supporting Python, Node, and C (`http://localhost:8082`)
+
+Start them from Quick start on Home. Extra instances get `-2`, `-3` names and host ports +100 (8181, 8182, ...).
+
+## Dashboard
+
+Vanilla HTML/CSS/JS in `gui/`, no CDN, works offline. Dark theme with a light toggle (saved in the browser).
+
+- **Home:** counts, host gauges (CPU, memory, process IDs, container memory), Quick start buttons, and two-per-row container cards with usage bars, an Open button and Details / Stop / Delete.
+- **Container detail** (`#/containers/<name>`): console (exec), logs, details and live memory/PID stats.
+- **Containers and Images:** tables. Images has Upload .tar, Download and Build from Vcfile (with `--clean` and `--update` checkboxes).
+- **Offline:** if the backend stops, the boxes stay and show an offline state.
 
 ## Security Model
 
@@ -60,6 +77,8 @@ Sample containers:
   1. `engine/run_container.sh`: Executes isolation primitives (namespaces, cgroup creation, overlay mount).
   2. `engine/build_helper.sh`: Constrained wrapper for build tasks (`tar`, `install`, `cp`, `chroot`, safe path-checked `rm`).
 - **Isolation Layers:** Containers utilize PID, Mount, UTS, IPC, Network, and User namespaces, cgroup v2 limits (memory with swap disabled, pids, cpu), and overlayfs isolation.
+- **Seccomp (on by default):** `run_container.sh` passes `--seccomp`, so containers get a deny-list filter (mount, umount2, pivot_root, reboot, init/finit/delete_module, ptrace, unshare, setns) and `no_new_privs`. Checked by running `unshare` inside a container: it is blocked.
+- **Known limits:** per-container CPU usage is not exposed (only the limit), so the dashboard CPU gauge is host-wide. Capability dropping beyond `no_new_privs` is not claimed.
 
 ## Verification & Testing
 
@@ -70,7 +89,14 @@ To run non-root unit tests:
 python3 -m unittest discover -s tests -p 'test_*.py'
 ```
 
-To run end-to-end integration checks:
+To run the six REST cases (the server must be running; takes about a minute):
+```bash
+bash tests/rest_cases.sh
+```
+
+Expected: `RESULT 6/6 passed`.
+
+To check prerequisites and run the root integration checks (`integration.sh` needs root or passwordless sudo):
 ```bash
 bash verify.sh
 bash tests/integration.sh
