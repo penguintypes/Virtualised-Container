@@ -77,3 +77,4 @@ The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments
 - feat: lavender/pink theme, host gauges on Home, GET /system endpoint
 - feat: Home keeps gauges when backend is offline, boxed sidebar tabs, clearer tables, compact detail page
 - fix: Quick start creates a new container each click, responsive tables and detail page, larger Details, equal header buttons
+- feat: logs above console with last-lines view, Open button in details, livelier Images table, status pills on Home, Image storage tile
