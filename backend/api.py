@@ -132,6 +132,9 @@ class VcApiHandler(BaseHTTPRequestHandler):
             if parsed_path == "/health":
                 return self.respond_with_json(200, {"ok": True, "capabilities": engine.capabilities()})
             
+            if parsed_path == "/system":
+                return self.respond_with_json(200, engine.host_stats())
+            
             if parsed_path == "/images":
                 return self.respond_with_json(200, engine.images())
             
