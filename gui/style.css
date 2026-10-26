@@ -171,3 +171,15 @@ a.btn.sm{padding:2px 10px;font-size:12px;margin-left:8px;vertical-align:1px}
 .out{max-height:none;overflow:visible}
 #log{min-height:0;max-height:none;overflow:visible;flex:none}
 @media(max-width:1100px){.tiles,.gauges{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+.split .card{padding:14px 18px;margin:0}
+.split h3{margin:0 0 10px;font-size:16px}
+.split .side{display:flex;flex-direction:column}
+.split .side dl{flex:1;align-content:space-between}
+button[data-act="open"]{--b:var(--accent)}
+button[data-act="start"]{--b:var(--ok)}
+button[data-act="stop"]{--b:var(--warn)}
+button[data-act="delete"],button[data-act="delimg"]{--b:var(--bad)}
+button[data-act="open"],button[data-act="start"],button[data-act="stop"],button[data-act="delete"],button[data-act="delimg"]{color:var(--b);font-weight:600;background:color-mix(in srgb,var(--b) 16%,var(--panel));border-color:color-mix(in srgb,var(--b) 50%,transparent)}
+button[data-act="open"]:hover,button[data-act="start"]:hover,button[data-act="stop"]:hover,button[data-act="delete"]:hover,button[data-act="delimg"]:hover{background:var(--b);border-color:var(--b);color:#1a1424}
+[data-theme=light] button[data-act="open"]:hover,[data-theme=light] button[data-act="start"]:hover,[data-theme=light] button[data-act="stop"]:hover,[data-theme=light] button[data-act="delete"]:hover,[data-theme=light] button[data-act="delimg"]:hover{color:#fff}
