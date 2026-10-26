@@ -48,13 +48,13 @@ const toggleBtn = c => c.status === 'running'
 function containerTable(list) {
   if (!list.length) return '<div class="empty">No containers yet.</div>';
   const rows = list.map(c => `<tr>
-    <td><span class="pill ${esc(c.status)}">${esc(c.status)}</span></td>
-    <td><a class="rname" href="#/containers/${enc(c.id)}">${esc(c.name)}</a></td>
-    <td><span class="chip">${esc(c.image || '—')}</span></td>
-    <td class="mono">${portLinks(c)}</td>
-    <td class="mono ${c.memory ? '' : 'muted'}">${esc(c.memory || 'No limit')}</td>
+    <td data-label="Status"><span class="pill ${esc(c.status)}">${esc(c.status)}</span></td>
+    <td data-label="Name"><a class="rname" href="#/containers/${enc(c.id)}">${esc(c.name)}</a></td>
+    <td data-label="Image"><span class="chip">${esc(c.image || '—')}</span></td>
+    <td data-label="Ports" class="mono">${portLinks(c)}</td>
+    <td data-label="Memory limit" class="mono ${c.memory ? '' : 'muted'}">${esc(c.memory || 'No limit')}</td>
     <td class="act">${toggleBtn(c)}<button class="danger" data-act="delete" data-id="${esc(c.id)}">Delete</button></td></tr>`).join('');
-  return `<table><tr><th>Status</th><th>Name</th><th>Image</th><th>Ports</th><th>Memory limit</th><th></th></tr>${rows}</table>`;
+  return `<table><tr class="hd"><th>Status</th><th>Name</th><th>Image</th><th>Ports</th><th>Memory limit</th><th></th></tr>${rows}</table>`;
 }
 
 const meter = (label, used, limit, fmt) => {
@@ -237,16 +237,16 @@ async function detail(id) {
 
 async function images() {
   $('#title').textContent = 'Images';
-  $('#actions').innerHTML = '<button data-act="upload">Upload .tar</button> <button class="primary" data-act="build">Build from Vcfile</button>';
+  $('#actions').innerHTML = '<button data-act="upload">Upload .tar</button><button class="primary" data-act="build">Build from VC File</button>';
   const xs = await api('/images');
   const rows = xs.map(x => `<tr>
-    <td><span class="rname">${esc(x.name)}</span></td>
-    <td class="mono">${bytes(x.size)}</td>
-    <td class="mono muted">${esc(String(x.created || '—').replace('T', ' ').slice(0, 16))}</td>
-    <td class="mono"><code>${esc((x.cmd || []).join(' '))}</code></td>
+    <td data-label="Name"><span class="rname">${esc(x.name)}</span></td>
+    <td data-label="Size" class="mono">${bytes(x.size)}</td>
+    <td data-label="Created (UTC)" class="mono muted">${esc(String(x.created || '—').replace('T', ' ').slice(0, 16))}</td>
+    <td data-label="Command" class="mono"><code>${esc((x.cmd || []).join(' '))}</code></td>
     <td class="act"><a href="/images/${enc(x.name)}/download" download="${esc(x.name)}.tar"><button>Download</button></a>
     <button class="danger" data-act="delimg" data-id="${esc(x.name)}">Delete</button></td></tr>`).join('');
-  $('#view').innerHTML = `<table><tr><th>Name</th><th>Size</th><th>Created (UTC)</th><th>Command</th><th></th></tr>${rows}</table>`;
+  $('#view').innerHTML = `<table><tr class="hd"><th>Name</th><th>Size</th><th>Created (UTC)</th><th>Command</th><th></th></tr>${rows}</table>`;
 }
 
 async function route() {
@@ -286,8 +286,19 @@ document.addEventListener('click', async e => {
     } else if (act === 'stop') {
       await busy(b, 'Stopping…', () => api(`/containers/${enc(id)}/stop`, {method: 'POST'})); route();
     } else if (act === 'quick') {
-      await busy(b, 'Starting…', () => api('/containers', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({image: img, name: img, port})}));
-      toast(img + ' started'); route();
+      await busy(b, 'Starting…', async () => {
+        const list = await api('/containers');
+        const names = new Set(list.map(c => c.name));
+        const used = new Set(list.flatMap(c => (c.ports || []).map(p => Number(p.split(':')[0]))));
+        const [host, inner] = port.split(':').map(Number);
+        let name = img, n = 1;
+        while (names.has(name)) name = `${img}-${++n}`;
+        let hp = host;
+        if (used.has(hp)) { hp = host + 100; while (used.has(hp)) hp++; }
+        await api('/containers', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({image: img, name, port: `${hp}:${inner}`})});
+        toast(`${name} started on :${hp}`);
+      });
+      route();
     } else if (act === 'delete' && confirm('Delete container ' + id + '?')) {
       await busy(b, 'Deleting…', () => api('/containers/' + enc(id), {method: 'DELETE'}));
       if (back) location.hash = '#/containers'; else route();
