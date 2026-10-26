@@ -16,6 +16,14 @@ Vcfile `RUN`, persisted `meta.json`, Alpine blog/runner images, the two sample U
 
 The WSL installer, PowerShell/NSIS launchers, verification checklist, no-root unit tests, and rootful integration script were added.
 
+## Final polish
+
+- chore: ignore vcontainer_source_dump.txt in git
+
+- fix: engine.inspect pops cgroup pids to prevent shadowing the saved pids limit
+
+- sec: replace hardcoded /tmp/vcontainer-work with mktemp -d to prevent collision and symlink attacks
+
 ## Engine patches
 
 - `engine/src/image.sh`: changed image and OCI stores from `/tmp` to `/var/lib/vcontainer` so the API and CLI share images.
