@@ -205,3 +205,6 @@ button[data-act="quick"]:hover{background:var(--b);border-color:var(--b);color:#
 .ctable th:nth-child(3){width:20%}
 .ctable th:nth-child(4){width:13%}
 .ctable th:nth-child(5){width:18%}
+
+/* compact top spacing: no scrollbar on Home with 2 cards */
+@media(min-width:721px){main{padding-top:10px;padding-bottom:12px}.top{margin-bottom:12px}}
