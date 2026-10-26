@@ -75,3 +75,4 @@ The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments
 - feat: Home container cards with exec and details, single-page container detail, sidebar system panel, fix PIDs limit display
 - feat: minimal two-column Home cards with usage bars and Open button
 - feat: lavender/pink theme, host gauges on Home, GET /system endpoint
+- feat: Home keeps gauges when backend is offline, boxed sidebar tabs, clearer tables, compact detail page
