@@ -40,8 +40,8 @@ case "$action" in
             set -eu
             project_dir="$1"
             work=$(mktemp -d)
-            trap \"sudo rm -rf \\"\$work\\"\" EXIT
-            mkdir -p \"\$work\"
+            trap 'sudo rm -rf "$work"' EXIT
+            mkdir -p "$work"
             cp "$project_dir/src/image.sh" "$work/"
             cd "$work"
             sudo bash ./image.sh pull "$2" "$3"
@@ -257,8 +257,8 @@ case "$action" in
             set -eu
             project_dir="$1"
             work=$(mktemp -d)
-            trap \"sudo rm -rf \\"\$work\\"\" EXIT
-            mkdir -p \"\$work\"
+            trap 'sudo rm -rf "$work"' EXIT
+            mkdir -p "$work"
             cp "$project_dir/src/image.sh" "$work/"
             cd "$work"
             sudo bash ./image.sh import "$2" "$3"
@@ -570,28 +570,19 @@ bash -c '
   set -eu
 
   project_dir="$1"
-  work=/tmp/vcontainer-work
-  mkdir -p "$work/src" "$work/include" "$work/build"
+  image="$2"
+  publish_port="$3"
+  container_name="$4"
+  container_ip="$5"
+  shift 5
 
+  work=$(mktemp -d)
   cp "$project_dir/src/cgroup.sh" "$work/"
   cp "$project_dir/src/image.sh" "$work/"
   cp "$project_dir/src/network.sh" "$work/"
 
   cd "$work"
   chmod 755 cgroup.sh image.sh network.sh
-' vcontainer-build "$project_dir"
-
-
-bash -c '
-  set -eu
-
-  image="$1"
-  publish_port="$2"
-  container_name="$3"
-  container_ip="$4"
-  shift 4
-
-  cd /tmp/vcontainer-work
 
   rootfs="/var/lib/vcontainer/images/$image/rootfs"
 
@@ -640,4 +631,4 @@ bash -c '
   sudo /usr/local/libexec/vcontainer/build/vcontainer run \
     --image "$image" --seccomp \
     "$@"
-' vcontainer-run "$image" "$publish_port" "$container_name" "$container_ip" "$@"
+' vcontainer-run "$project_dir" "$image" "$publish_port" "$container_name" "$container_ip" "$@"
