@@ -20,6 +20,12 @@ curl -s -X POST $A/containers/c1/stop >/dev/null; sleep 2; S2=$(st c1)
 [ "$S1" = running ] && [ "$S2" = stopped ] && r=ok || r=bad
 res "C1 api create running, stop makes stopped" $r; del c1
 
+del c2; run '{"name":"c2","image":"runner","memory":"128M","command":["python3","-c","x=b\"a\"*(300*1024*1024);print(\"survived\")"]}'
+sleep 6; L=$(curl -s $A/containers/c2/logs); S=$(st c2)
+echo "$L" | grep -q survived && r=bad || r=ok
+[ "$S" = stopped ] || r=bad
+res "C2 memory limit enforced, 300MB hog killed at 128MB" $r; del c2
+
 rm -f /tmp/test.txt; del w1; run '{"name":"w1","image":"blog","command":["/bin/sh","-c","echo hello > /tmp/test.txt && cat /tmp/test.txt"]}'
 L=$(logs w1); H=clean; [ -e /tmp/test.txt ] && H=leak
 echo "$L" | grep -q hello && [ "$H" = clean ] && r=ok || r=bad
@@ -31,11 +37,5 @@ L1=$(logs iso1); L2=$(logs iso2); HN=$(hostname)
 echo "$L1" | grep -q iso1 && echo "$L2" | grep -q iso2 && r=ok || r=bad
 echo "$L1$L2" | grep -q "$HN" && r=bad
 res "A2 each container has its own hostname" $r; del iso1; del iso2
-
-del c2; run '{"name":"c2","image":"runner","memory":"128M","command":["python3","-c","x=b\"a\"*(300*1024*1024);print(\"survived\")"]}'
-sleep 6; L=$(curl -s $A/containers/c2/logs); S=$(st c2)
-echo "$L" | grep -q survived && r=bad || r=ok
-[ "$S" = stopped ] || r=bad
-res "C2 memory limit enforced, 300MB hog killed at 128MB" $r; del c2
 
 echo "RESULT $P/$((P+F)) passed"; [ "$F" = 0 ]
