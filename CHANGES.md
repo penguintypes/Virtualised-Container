@@ -80,3 +80,4 @@ The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments
 - feat: logs above console with last-lines view, Open button in details, livelier Images table, status pills on Home, Image storage tile
 - feat: aligned detail page grid, colour-filled Details/Start/Stop/Delete buttons
 - fix: stable card and detail layout for stopped containers, Details as its own table column
+- fix: tighter top and bottom spacing so Home has no scrollbar with two containers
