@@ -148,7 +148,7 @@ def run(name, image, command=None, memory=None, cpus=None, pids=None, port=None)
 def inspect(name):
     data = _parse(_call("inspect", name))
     record = _load().get(name, {"id": name, "name": name})
-    pids = data.get("pids", "").split()
+    pids = data.pop("pids", "").split()
     record.update(status="exited" if data.get("status") == "stopped" else data.get("status", "unknown"), pid=int(pids[0]) if pids else None)
     return record | data
 
