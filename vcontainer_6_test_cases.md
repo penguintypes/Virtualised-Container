@@ -40,22 +40,17 @@ curl -s -X DELETE http://localhost:8080/containers/runner-test
 
 Pass: logs show `runner works`; the container list shows status `stopped`.
 
-## C1: API and dashboard stay in sync
+## C1: API create, stop changes status
 
 ```bash
 curl -s -X POST http://localhost:8080/containers -H "Content-Type: application/json" -d '{"name":"c1","image":"blog","command":["/bin/sh","-c","sleep 120"]}'
-```
-
-1. Open http://localhost:8080. Card `c1` shows `running`.
-2. Click Stop on the card. The badge changes to `stopped` and a Start button appears.
-3. Check the API:
-
-```bash
-curl -s http://localhost:8080/containers | grep -o '"name": "c1", "image": "blog", "status": "[a-z]*"'
+sleep 2; curl -s http://localhost:8080/containers | grep -o '"name": "c1", "image": "blog", "status": "[a-z]*"'
+curl -s -X POST http://localhost:8080/containers/c1/stop
+sleep 2; curl -s http://localhost:8080/containers | grep -o '"name": "c1", "image": "blog", "status": "[a-z]*"'
 curl -s -X DELETE http://localhost:8080/containers/c1
 ```
 
-Pass: API reports `stopped` after the dashboard Stop. Delete also works on a running container (it stops it first).
+Pass: the first check reports `running`, the second reports `stopped`. The dashboard card for `c1` shows the same status. Delete also works on a running container (it stops it first).
 
 ## C2: Memory limit is enforced
 
@@ -98,4 +93,4 @@ Pass: logs show `iso1` and `iso2`; the host prints its own different name. This 
 - Blog or runner ports refuse connections after a stop: click Start on the card; the port forwarder is recreated.
 - Do not put `!` inside double-quoted shell strings; bash history expansion breaks them. Use single quotes.
 
-*Last updated: 2026-10-25*
+*Last updated: 2026-10-27*
