@@ -74,13 +74,25 @@ function execBox(c) {
   return `<form class="exec cx" data-id="${esc(c.id)}"><input placeholder="Run a command, e.g. ls -la /" required autocomplete="off"><button class="primary">Run</button></form><pre class="out hidden"></pre>`;
 }
 
+function miniBar(label, used, limit, fmt) {
+  if (!limit) return `<div class="mini between"><span class="muted">${label}</span><span class="muted">${fmt(used)} · no limit</span></div>`;
+  const pct = Math.min(100, Math.round((used || 0) / limit * 100));
+  const level = pct >= 90 ? 'hot' : pct >= 70 ? 'warm' : '';
+  return `<div class="mini"><div class="between"><span class="muted">${label}</span><span>${pct}%</span></div><div class="bar ${level}"><i style="width:${pct}%"></i></div></div>`;
+}
+
 function containerCard(c, s) {
   const id = esc(c.id);
-  return `<article class="card ccard"><div class="cmain">
-    <div class="chead"><div><a class="cname" href="#/containers/${enc(c.id)}">${esc(c.name)}</a><div class="muted">${dot(c.status)}</div></div>
-    <div class="cbtns"><button data-act="open" data-id="${id}">Details</button>${toggleBtn(c)}<button class="danger" data-act="delete" data-id="${id}">Delete</button></div></div>
-    ${execBox(c)}</div>
-    <div class="cside">${s ? meter('Memory', s.memory_bytes, s.memory_limit_bytes, bytes) + meter('PIDs', s.pids, s.pid_limit, n => n ?? '—') : ''}${detailsList(c, s)}</div></article>`;
+  const running = c.status === 'running';
+  const hostPort = ((c.ports || [])[0] || '').split(':')[0];
+  const bars = !running ? '<p class="muted">Stopped</p>' : !s ? '<p class="muted">Stats unavailable</p>'
+    : miniBar('Memory', s.memory_bytes, s.memory_limit_bytes, bytes) + miniBar('PIDs', s.pids, s.pid_limit, n => n ?? '—');
+  return `<article class="card ccard">
+    <div class="chead"><div><a class="cname" href="#/containers/${enc(c.id)}">${esc(c.name)}</a>
+      <div class="muted">${dot(c.status)} · ${esc(c.image || '—')}</div></div>
+      ${running && hostPort ? `<a class="btn primary" target="_blank" rel="noopener" href="http://localhost:${esc(hostPort)}">Open :${esc(hostPort)} ↗</a>` : ''}</div>
+    ${bars}
+    <div class="cbtns"><button data-act="open" data-id="${id}">Details</button>${toggleBtn(c)}<button class="danger" data-act="delete" data-id="${id}">Delete</button></div></article>`;
 }
 
 async function home() {
