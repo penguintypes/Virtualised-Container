@@ -214,12 +214,11 @@ async function detail(id) {
   const s = running ? await api(`/containers/${enc(id)}/stats`).catch(() => null) : null;
   $('#title').innerHTML = `<a class="back" href="#/containers">←</a>${esc(c.name)} <small class="muted">${dot(c.status)}</small>`;
   $('#actions').innerHTML = toggleBtn(c) + ` <button class="danger" data-act="delete" data-id="${esc(c.id)}" data-back="1">Delete</button>`;
-  $('#view').innerHTML = `<div class="split"><div class="col">
+  $('#view').innerHTML = `<div class="split">
       <div class="card"><div class="between"><h3>Logs <small id="lognote" class="muted"></small></h3><button data-act="logs">Refresh</button></div><pre id="log">Loading…</pre></div>
+      <div class="card side"><h3>Details</h3>${detailsList(c, s)}</div>
       <div class="card"><h3>Console</h3>${execBox(c)}</div>
-    </div><div class="col">
-      <div class="card"><h3>Details</h3>${detailsList(c, s)}</div>
-      <div id="res" class="col"></div></div></div>`;
+      <div id="res" class="col"></div></div>`;
   const LOG_LINES = 10;
   const loadLogs = async () => {
     const el = $('#log');
