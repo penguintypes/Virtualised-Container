@@ -73,3 +73,4 @@ The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments
 - feat: Portainer-inspired dashboard (Home, container detail with logs/stats/exec, images upload/download, dark/light theme)
 - feat: Portainer-inspired dashboard (Home, container detail with logs/stats/exec, images upload/download, dark/light theme)
 - feat: Home container cards with exec and details, single-page container detail, sidebar system panel, fix PIDs limit display
+- feat: minimal two-column Home cards with usage bars and Open button
