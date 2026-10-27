@@ -7,14 +7,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 
 # Works whether setup.py is in the outer or inner folder.
-PROJECT = ROOT
+PROJECT = ROOT if (ROOT / "api").is_dir() else ROOT / "Virtualised-Container-vcontainer-arm-_backend"
 '''if not (PROJECT / "api").is_dir():
     PROJECT = ROOT / "Virtualised-Container-vcontainer-arm-_backend" '''
 
 API = PROJECT / "api"
 ENGINE = PROJECT / "Vcontainer(win)"
-HELPER = API / "helpers" / "vcontainer-read"
-
 DISTRO = "Ubuntu"
 USER = "vcdev"
 
@@ -63,20 +61,18 @@ def linux_path(path):
 
 def setup_linux():
     engine_path = linux_path(ENGINE)
-    helper_path = linux_path(HELPER)
 
     script = r"""
 set -euo pipefail
 
 user="$1"
 engine="$2"
-helper="$3"
 
 echo "Installing Linux dependencies..."
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y \
     build-essential libseccomp-dev \
-    skopeo umoci iproute2 iptables util-linux \
+    skopeo umoci iproute2 iptables util-linux socat \
     python3 sudo uidmap
 
 echo "Preparing development user..."
@@ -103,29 +99,9 @@ for controller in cpu memory pids; do
     grep -qw "$controller" /sys/fs/cgroup/cgroup.controllers
 done
 
-echo "Installing read-only API helper..."
-install -o root -g root -m 0755 \
-    "$helper" /usr/local/sbin/vcontainer-read
-
-# Normalize Windows line endings in the installed copy.
-sed -i 's/\r$//' /usr/local/sbin/vcontainer-read
-python3 -m py_compile /usr/local/sbin/vcontainer-read
-
-echo "Configuring restricted sudo permission..."
-policy=$(mktemp)
-trap 'rm -f "$policy"' EXIT
-
-printf '%s ALL=(root) NOPASSWD: /usr/local/sbin/vcontainer-read\n' \
-    "$user" > "$policy"
-
-visudo -cf "$policy"
-install -o root -g root -m 0440 \
-    "$policy" /etc/sudoers.d/vcontainer-read
-visudo -c
-
 echo "Building C engine in the Linux filesystem..."
 work=$(mktemp -d /tmp/vcontainer-build.XXXXXX)
-trap 'rm -f "$policy"; rm -rf "$work"' EXIT
+trap 'rm -rf "$work"' EXIT
 
 cp -R "$engine/src" "$engine/include" "$work/"
 cp "$engine/Makefile" "$work/"
@@ -139,12 +115,31 @@ make -C "$work"
 install -d -o root -g root -m 0755 /opt/vcontainer/bin
 install -o root -g root -m 0755 \
     "$work/build/vcontainer" /opt/vcontainer/bin/vcontainer
+install -o root -g root -m 0755 \
+    "$engine/run_container.sh" /opt/vcontainer/bin/vcontainer-cli
+sed -i 's/\r$//' /opt/vcontainer/bin/vcontainer-cli
 
+install -d -o root -g root -m 0755 /opt/vcontainer/libexec
+for helper_name in cgroup.sh network.sh image.sh; do
+    install -o root -g root -m 0755 "$work/src/$helper_name" "/opt/vcontainer/libexec/$helper_name"
+done
+install -d -o root -g root -m 0755 /var/lib/vcontainer/images /var/lib/vcontainer/oci
+# Preserve existing temporary images when upgrading an installation.
+for pair in "vcontainer-images images" "vcontainer-oci oci"; do
+    read -r old new <<< "$pair"
+    if [ -d "/tmp/$old" ]; then
+        for directory in "/tmp/$old"/*; do
+            [ -d "$directory" ] || continue
+            target="/var/lib/vcontainer/$new/${directory##*/}"
+            [ -e "$target" ] || cp -a "$directory" "$target"
+        done
+    fi
+done
 echo "Linux setup complete."
 """
 
     ubuntu(
-        "bash", "-s", "--", USER, engine_path, helper_path,
+        "bash", "-s", "--", USER, engine_path,
         input_text=script,
     )
 
@@ -183,12 +178,23 @@ def verify():
         data = json.loads(result.stdout)
         print(f"{action}: {len(data)} entries")
 
+    verification = PROJECT / "tests" / "verify_install.sh"
+    if not verification.is_file():
+        raise RuntimeError(f"Installation verification is missing: {verification}")
+
+    print("Running post-install verification...")
+    ubuntu("bash", linux_path(verification))
+
 
 def main():
     if sys.platform != "win32":
         raise SystemExit("Run this installer using Windows Python.")
 
-    for path in (API / "pyproject.toml", ENGINE / "Makefile", HELPER):
+    for path in (
+        API / "pyproject.toml", ENGINE / "Makefile",
+        ENGINE / "run_container.sh",
+        PROJECT / "tests" / "verify_install.sh",
+    ):
         if not path.is_file():
             raise SystemExit(f"Required file missing: {path}")
 
@@ -205,15 +211,13 @@ def main():
 
     setup_linux()
     setup_python()
+    run(sys.executable, str(PROJECT / "setup_api_service.py"))
     verify()
 
     print("\nSetup complete.")
     print(f"API directory: {API}")
-    print("Start the API from that directory:")
-    print(
-        "uv run uvicorn api.main:app "
-        "--host 127.0.0.1 --port 8001 --reload"
-    )
+    print("Linux API service: http://localhost:8010/docs")
+    print("The launcher starts the service automatically for image listing.")
     print("\nIf vcdev was newly created, set its password in Ubuntu:")
     print("  wsl -d Ubuntu -u root --exec passwd vcdev")
 
@@ -227,5 +231,5 @@ if __name__ == "__main__":
         raise SystemExit(
             f"Setup stopped: command exited with code {error.returncode}"
         )
-    except (OSError, ValueError) as error:
+    except (OSError, RuntimeError, ValueError) as error:
         raise SystemExit(f"Setup stopped: {error}")

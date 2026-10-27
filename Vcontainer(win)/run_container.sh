@@ -1,29 +1,39 @@
 #!/usr/bin/env bash
 
-set -eu
+set -euo pipefail
 
+# The Windows launcher enters WSL as root; direct Linux use retains sudo.
+if [ "$(id -u)" -eq 0 ]; then
+    sudo() { "$@"; }
+    export -f sudo
+fi
 project_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 usage() {
-    echo "Usage:" >&2
-    echo " $0 list" >&2
-    echo " $0 pull LOCAL_NAME [REMOTE_REFERENCE]" >&2
-    echo " $0 run IMAGE --name NAME [OPTIONS] -- COMMAND [ARGS...]" >&2
-    echo " $0 volume {create|list|inspect|remove} [NAME]" >&2
-    echo " $0 exec CONTAINER -- COMMAND [ARGS...]" >&2
-    echo " $0 logs [-f] CONTAINER" >&2
-    echo " $0 inspect CONTAINER" >&2
-    echo " $0 rm CONTAINER" >&2
-    echo " $0 stop CONTAINER" >&2
-    echo " $0 ps" >&2
-    echo " Run this script inside your WSL 2 Linux distribution." >&2
-    echo " $0 [--network bridge --ip ADDRESS] "
-    exit 2
+    cat >&2 <<'USAGE'
+Usage: vcontainer COMMAND
+  run IMAGE --name NAME [--detach] [--volume NAME:/TARGET]
+      [--network bridge --ip ADDRESS] [RESOURCE OPTIONS] -- COMMAND [ARGS...]
+  pull LOCAL_NAME [REMOTE_REFERENCE]
+  list
+  delete IMAGE
+  ps                         Show status, host PIDs and saved command
+  inspect CONTAINER
+  logs [-f] CONTAINER
+  exec CONTAINER -- COMMAND [ARGS...]
+  start CONTAINER             Run the saved command using existing container files
+  stop CONTAINER             Kill all processes and wait for cgroup cleanup
+  rm CONTAINER               Remove a stopped container's metadata
+  volume {create|list|inspect|remove} [NAME]
+  help
+USAGE
 }
+fail() { echo "vcontainer: $*" >&2; exit 2; }
 
-action="${1:-}"
+action="${1:-help}"
 
 case "$action" in
+    help|--help|-h) usage; exit 0 ;;
     pull)
         [ "$#" -ge 2 ] && [ "$#" -le 3 ] || usage
         image="$2"
@@ -35,15 +45,7 @@ case "$action" in
         esac
         reference="${3:-docker.io/library/$image:latest}"
 
-        bash -c '
-            set -eu
-            project_dir="$1"
-            work=/tmp/vcontainer-work
-            mkdir -p "$work"
-            cp "$project_dir/src/image.sh" "$work/"
-            cd "$work"
-            sudo bash ./image.sh pull "$2" "$3"
-        ' vcontainer-pull "$project_dir" "$image" "$reference"
+        sudo bash /opt/vcontainer/libexec/image.sh pull "$image" "$reference"
         exit 0
         ;;
     volume)
@@ -107,6 +109,7 @@ case "$action" in
                     ;;
 
                 inspect)
+        [ "$#" -eq 2 ] || fail "Usage: vcontainer inspect CONTAINER"
                     if ! sudo test -d "$data_dir"; then
                         echo "volume not found: $name" >&2
                         exit 1
@@ -145,19 +148,12 @@ case "$action" in
         exit 0
         ;;
     list)
-        bash -c '
-            set -eu
-
-            echo "Available images:"
-            printf "%-16s %s\n" "IMAGE" "ROOTFS"
-
-            for image_dir in /tmp/vcontainer-images/*; do
-                [ -d "$image_dir/rootfs" ] || continue
-                printf "%-16s %s\n" \
-                "$(basename "$image_dir")" \
-                "$image_dir/rootfs"
-            done
-        '
+        [ "$#" -eq 1 ] || fail "Usage: vcontainer list"
+        sudo /usr/local/sbin/vcontainer-read images | python3 -c '
+import json, sys
+print("IMAGE            ROOTFS")
+for image in json.load(sys.stdin):
+    print("{:<16} {}".format(image["name"], image["rootfs"]))'
         exit 0
         ;;
     run)
@@ -217,6 +213,7 @@ case "$action" in
         set -- "${resolved_args[@]}"
         ;;
     delete)
+        [ "$#" -eq 2 ] || fail "Usage: vcontainer delete IMAGE"
         image="${2:-}"
 
         case "$image" in
@@ -230,9 +227,16 @@ case "$action" in
         bash -c '
             set -eu
             image="$1"
+            sudo test -d "/var/lib/vcontainer/images/$image" || {
+                echo "image not found: $image" >&2; exit 1;
+            }
+            if sudo grep -rlFx "image=$image" /var/lib/vcontainer/containers/*/config >/dev/null 2>&1; then
+                echo "image is referenced by a container; remove its metadata first" >&2
+                exit 1
+            fi
             sudo rm -rf -- \
-                "/tmp/vcontainer-images/$image" \
-                "/tmp/vcontainer-oci/$image"
+                "/var/lib/vcontainer/images/$image" \
+                "/var/lib/vcontainer/oci/$image"
         ' vcontainer-delete "$image"
         exit 0
         ;;
@@ -277,6 +281,7 @@ case "$action" in
         exit 0
         ;;
     inspect)
+        [ "$#" -eq 2 ] || fail "Usage: vcontainer inspect CONTAINER"
         name="${2:-}"
 
         case "$name" in
@@ -352,23 +357,13 @@ case "$action" in
         exit 0
         ;;
     ps)
-        bash -c '
-            set -eu
-
-            sudo sh -c '"'"'
-                printf "%-16s %s\n" "CONTAINER" "PIDS"
-
-                for group in /sys/fs/cgroup/vcontainer/*; do
-                    [ -d "$group" ] || continue
-
-                    pids=$(cat "$group/cgroup.procs")
-                    [ -n "$pids" ] || continue
-
-                    name=${group##*/}
-                    printf "%-16s %s\n" "$name" "$(echo "$pids" | tr "\n" " ")"
-                done
-            '"'"'
-        '
+        [ "$#" -eq 1 ] || fail "Usage: vcontainer ps"
+        sudo /usr/local/sbin/vcontainer-read ps | python3 -c '
+import json, sys, shlex
+print("{:<20} {:<10} {:<20} {}".format("CONTAINER", "STATUS", "HOST PIDS", "COMMAND"))
+for item in json.load(sys.stdin):
+    print("{:<20} {:<10} {:<20} {}".format(item["name"], item["status"], ",".join(map(str, item["host_pids"])) or "-", shlex.join(item.get("command", []))))
+print("Host PIDs include the main process and its child processes.")'
         exit 0
         ;;
     exec)
@@ -425,6 +420,7 @@ case "$action" in
       exit 0
       ;;
     rm)
+        [ "$#" -eq 2 ] || fail "Usage: vcontainer rm CONTAINER"
         name="${2:-}"
 
          case "$name" in
@@ -464,96 +460,71 @@ case "$action" in
 
         exit 0
         ;;
+    start)
+        [ "$#" -eq 2 ] || fail "Usage: vcontainer start CONTAINER"
+        [ -x /opt/vcontainer/bin/vcontainer ] || fail "runtime not installed; run python setup.py"
+        sudo /opt/vcontainer/bin/vcontainer start "$2"
+        exit $?
+        ;;
     stop)
-        name="${2:-}"
-
+        [ "$#" -eq 2 ] || fail "Usage: vcontainer stop CONTAINER (no PID argument)"
+        name="$2"
         case "$name" in
-            ""|.|..|*[!A-Za-z0-9_.-]*)
-                echo "Usage: $0 stop CONTAINER" >&2
-                exit 2
-                ;;
+            ""|.|..|*[!A-Za-z0-9_.-]*) fail "invalid container name: $name" ;;
         esac
+        sudo bash -c '
+            set -euo pipefail
+            group="/sys/fs/cgroup/vcontainer/$1"
+            if [ ! -d "$group" ]; then
+                [ -d "/var/lib/vcontainer/containers/$1" ] || { echo "container not found: $1" >&2; exit 1; }
+                echo "already stopped: $1"
+                exit 0
+            fi
 
-        bash -c '
-            set -eu
-            name="$1"
-            group="/sys/fs/cgroup/vcontainer/$name"
+            pid_file="/var/lib/vcontainer/containers/$1/init.pid"
+            
+           if [ -f "$pid_file" ]; then
+                pid=$(cat "$pid_file")
 
-            [ -d "$group" ] || {
-                echo "container not found: $name" >&2
-                exit 1
-            }
+                if [[ "$pid" =~ ^[0-9]+$ ]] &&
+                grep -qx "$pid" "$group/cgroup.procs"; then
+                    kill -TERM "$pid" 2>/dev/null || true
+                fi
+            fi
 
-            sudo sh -c '"'"'echo 1 > "$1/cgroup.kill"'"'"' sh "$group"
-            sudo rmdir "$group"
+            for attempt in $(seq 1 100); do
+                [ -d "$group" ] || break
+                grep -q "^populated 0$" "$group/cgroup.events" && break
+                sleep 0.1
+            done
 
-            echo "stopped: $name"
+            if [ -d "$group" ] &&
+            ! grep -q "^populated 0$" "$group/cgroup.events"; then
+                echo 1 > "$group/cgroup.kill"
+            fi
+            for attempt in $(seq 1 100); do
+                [ -d "$group" ] || break
+
+                if grep -q "^populated 0$" "$group/cgroup.events"; then
+                    rmdir "$group" 2>/dev/null && break
+                fi
+
+                sleep 0.05
+            done
+            [ ! -d "$group" ] || { echo "stop timed out; cgroup still busy: $1" >&2; exit 1; }
+            echo "stopped: $1"
         ' vcontainer-stop "$name"
         exit 0
         ;;
     *)
-        usage
+        fail "unknown command: $action (use vcontainer help)"
         ;;
 esac
 
-bash -c '
-  set -eu
-
-  project_dir="$1"
-  work=/tmp/vcontainer-work
-  mkdir -p "$work/src" "$work/include" "$work/build"
-
-  cp "$project_dir/src/vcontainer.c" "$work/src/"
-  cp "$project_dir/src/cgroup.c" "$work/src/"
-  cp "$project_dir/src/namespace.c" "$work/src/"
-  cp "$project_dir/src/seccomp.c" "$work/src/"
-  cp "$project_dir/src/remember.c" "$work/src/"
-  cp "$project_dir/src/log.c" "$work/src/"
-  cp "$project_dir/src/state.c" "$work/src/"
-  cp "$project_dir/src/overlay.c" "$work/src/"
-  cp "$project_dir/src/network.c" "$work/src/"
-  cp "$project_dir/include/cgroup.h" "$work/include/"
-  cp "$project_dir/include/namespace.h" "$work/include/"
-  cp "$project_dir/include/seccomp.h" "$work/include/"
-  cp "$project_dir/include/remember.h" "$work/include/"
-  cp "$project_dir/include/log.h" "$work/include/"
-  cp "$project_dir/include/state.h" "$work/include/"
-  cp "$project_dir/include/overlay.h" "$work/include/"
-  cp "$project_dir/include/network.h" "$work/include/"
-  cp "$project_dir/src/cgroup.sh" "$work/"
-  cp "$project_dir/src/image.sh" "$work/"
-  cp "$project_dir/src/network.sh" "$work/"
-  cp "$project_dir/Makefile" "$work/"
-
-  cd "$work"
-  chmod 755 cgroup.sh image.sh network.sh
-  make clean
-  make
-' vcontainer-build "$project_dir"
-
-
-bash -c '
-  set -eu
-
-  image="$1"
-  shift
-
-  cd /tmp/vcontainer-work
-
-  rootfs="/tmp/vcontainer-images/$image/rootfs"
-
-  if ! sudo chroot "$rootfs" /bin/sh -c "exit 0"; then
-      echo "Image missing; pulling: $image"
-      sudo ./image.sh pull "$image"
-  fi
-
-  if ! sudo chroot "$rootfs" /bin/sh -c "exit 0"; then
-      echo "Image missing; pulling: $image"
-      exit 1
-  fi
-
-  sudo ./build/vcontainer run \
-    --image "$image" \
-    "$@"
-' vcontainer-run "$image" "$@"
-
+[ -x /opt/vcontainer/bin/vcontainer ] || fail "runtime not installed; run python setup.py"
+rootfs="/var/lib/vcontainer/images/$image/rootfs"
+if ! sudo test -d "$rootfs"; then
+    echo "Image missing; pulling: $image"
+    sudo bash /opt/vcontainer/libexec/image.sh pull "$image"
+fi
+sudo /opt/vcontainer/bin/vcontainer run --image "$image" --seccomp "$@"

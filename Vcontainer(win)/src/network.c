@@ -27,7 +27,7 @@ int network_setup_bridge(const char *name, pid_t child,
         return -1;
 
     if (helper == 0) {
-        execl("/tmp/vcontainer-work/network.sh",
+        execl("/opt/vcontainer/libexec/network.sh",
               "network.sh", "setup", name, child_pid, ip_address,
               (char *)NULL);
         _exit(127);

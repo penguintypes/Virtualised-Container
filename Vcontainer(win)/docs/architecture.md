@@ -6,5 +6,5 @@
 - `examples/`: runnable command examples.
 - `build/`: generated local binaries; not source code.
 
-Persistent named volumes live in the Lima VM at
+Persistent named volumes live in the WSL distribution at
 `/var/lib/vcontainer/volumes/<name>/_data`.

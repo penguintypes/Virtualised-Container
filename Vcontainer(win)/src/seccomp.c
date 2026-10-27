@@ -18,8 +18,6 @@ int seccomp_config(bool enabled, const char *const denied[],
     if (!enabled)
         return 0;
 
-    bool use_defaults = (denied_count == 0);
-
     scmp_filter_ctx filter = seccomp_init(SCMP_ACT_ALLOW);
     if(filter == NULL){
         return -1;
@@ -45,12 +43,10 @@ int seccomp_config(bool enabled, const char *const denied[],
     size_t length_of_block = sizeof(blocked) / sizeof(blocked[0]);
     size_t i;
 
-    if (use_defaults) {
-        for(i = 0; i < length_of_block; ++i ){
-            if(seccomp_rule_add(filter, SCMP_ACT_ERRNO(EPERM), blocked[i], 0) != 0){
-                errno = EINVAL;
-                goto fail;
-            }
+    for(i = 0; i < length_of_block; ++i ){
+        if(seccomp_rule_add(filter, SCMP_ACT_ERRNO(EPERM), blocked[i], 0) != 0){
+            errno = EINVAL;
+            goto fail;
         }
     }
 
