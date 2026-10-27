@@ -4,8 +4,8 @@ set -euo pipefail
 action="${1:-}"
 name="${2:-}"
 
-store="/tmp/vcontainer-images"
-oci_store="/tmp/vcontainer-oci"
+store="/var/lib/vcontainer/images"
+oci_store="/var/lib/vcontainer/oci"
 rootfs="$store/$name/rootfs"
 
 
@@ -18,7 +18,7 @@ rootfs="$store/$name/rootfs"
 #archive="$3"
 
 case "$name" in
-    ""|*[!a-zA-Z0-9_.-]*)
+    ""|.|..|*[!a-zA-Z0-9_.-]*)
         echo "invalid image name: $name" >&2
         exit 2
         ;;

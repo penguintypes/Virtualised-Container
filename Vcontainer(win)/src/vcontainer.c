@@ -24,7 +24,10 @@
 
 #include <stddef.h>
 
+#include <ctype.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <poll.h>
 #include <sched.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -52,6 +55,7 @@
 #define STACK_SIZE (1024 * 1024)
 #define MAX_SECCOMP_DENIES 32
 #define MAX_VOLUMES 16
+#define MAX_ENVIRONMENT 128
 
 /* rootfs - Image which will bootup the isloated offspring
  * hostname - Name of the child
@@ -78,6 +82,8 @@ struct config {
     char **command;
     int sync_fd;
     int sync_write_fd;
+    int startup_read_fd;
+    int startup_write_fd;
     bool use_userns;
     bool detach;
     bool bridge_network;
@@ -88,6 +94,9 @@ struct config {
 
     struct container_volume volumes[MAX_VOLUMES];
     size_t volume_count;
+
+    const char *environment[MAX_ENVIRONMENT];
+    size_t environment_count;
 
     int log_fd;
 
@@ -105,8 +114,28 @@ static void usage(const char *program)
         "Usage: %s run (--rootfs DIRECTORY | --image NAME) --name NAME [--hostname NAME] "
         "[--memory-max VALUE] [--pids-max COUNT] "
         "[--cpu-max QUOTA PERIOD] [--volume SOURCE:TARGET] "
-        "[--network bridge --ip ADDRESS] -- COMMAND [ARGS...]\n",
+        "[--network bridge --ip ADDRESS] [--env NAME=VALUE] "
+        "[--detach] [--log] "
+        "-- COMMAND [ARGS...]\n",
             program);
+}
+
+static bool valid_environment_assignment(const char *assignment)
+{
+    const char *equals = assignment == NULL ? NULL : strchr(assignment, '=');
+    if (equals == NULL || equals == assignment || strlen(equals + 1) > 8192)
+        return false;
+
+    unsigned char first = (unsigned char)assignment[0];
+    if (first != '_' && !isalpha(first))
+        return false;
+
+    for (const char *cursor = assignment + 1; cursor < equals; ++cursor) {
+        unsigned char character = (unsigned char)*cursor;
+        if (character != '_' && !isalnum(character))
+            return false;
+    }
+    return true;
 }
 
 static int mkdir_if_missing(const char *path, mode_t mode)
@@ -181,9 +210,75 @@ static int set_up_rootfs(const char *rootfs, const char *container_name,
     }
 
     if (mount("tmpfs", "/dev", "tmpfs",
-              MS_NOSUID | MS_NODEV, "mode=755") != 0) {
+              MS_NOSUID | MS_NOEXEC, "mode=755") != 0) {
         die("mount /dev");
         return -1;
+    }
+
+    const char *devices[] = {
+        "null", "zero", "full", "random", "urandom", "tty"
+    };
+    for (size_t i = 0; i < sizeof(devices) / sizeof(devices[0]); ++i) {
+        char source[64];
+        char target[64];
+        if (snprintf(source, sizeof(source), "/.oldroot/dev/%s", devices[i]) >=
+                (int)sizeof(source) ||
+            snprintf(target, sizeof(target), "/dev/%s", devices[i]) >=
+                (int)sizeof(target)) {
+            errno = ENAMETOOLONG;
+            return -1;
+        }
+        int device_fd = open(target, O_WRONLY | O_CREAT | O_CLOEXEC, 0666);
+        if (device_fd < 0 || close(device_fd) != 0 ||
+            chmod(target, 0666) != 0 ||
+            mount(source, target, NULL, MS_BIND, NULL) != 0) {
+            if (device_fd >= 0)
+                close(device_fd);
+            die("mount standard device");
+            return -1;
+        }
+    }
+
+    if (mkdir_if_missing("/dev/pts", 0755) != 0 ||
+        mount("devpts", "/dev/pts", "devpts",
+              MS_NOSUID | MS_NOEXEC,
+              "newinstance,ptmxmode=0666,mode=0620,gid=0") != 0) {
+        die("mount /dev/pts");
+        return -1;
+    }
+
+    if (mkdir_if_missing("/dev/shm", 01777) != 0 ||
+        mount("tmpfs", "/dev/shm", "tmpfs",
+              MS_NOSUID | MS_NODEV,
+              "mode=1777") != 0) {
+        die("mount /dev/shm");
+        return -1;
+    }
+
+    if (mkdir_if_missing("/dev/mqueue", 0755) != 0 ||
+        mount("mqueue", "/dev/mqueue", "mqueue",
+              MS_NOSUID | MS_NOEXEC | MS_NODEV, NULL) != 0) {
+        die("mount /dev/mqueue");
+        return -1;
+    }
+
+    const struct {
+        const char *target;
+        const char *linkpath;
+    } descriptor_links[] = {
+        { "/proc/self/fd", "/dev/fd" },
+        { "/proc/self/fd/0", "/dev/stdin" },
+        { "/proc/self/fd/1", "/dev/stdout" },
+        { "/proc/self/fd/2", "/dev/stderr" },
+        { "pts/ptmx", "/dev/ptmx" },
+    };
+    for (size_t i = 0;
+         i < sizeof(descriptor_links) / sizeof(descriptor_links[0]); ++i) {
+        if (symlink(descriptor_links[i].target,
+                    descriptor_links[i].linkpath) != 0) {
+            die("create standard device link");
+            return -1;
+        }
     }
 
     if (umount2("/.oldroot", MNT_DETACH) != 0 || rmdir("/.oldroot") != 0) {
@@ -194,63 +289,91 @@ static int set_up_rootfs(const char *rootfs, const char *container_name,
     return 0;
 }
 
+static _Noreturn void child_fail(struct config *config)
+{
+    int error = errno ? errno : EIO;
+    ssize_t written = write(config->startup_write_fd, &error, sizeof(error));
+    (void)written;
+    _exit(127);
+}
+
 static int child_main(void *argument)
 {
     struct config *config = argument;
     char ready;
 
     close(config->sync_write_fd);
+    close(config->startup_read_fd);
 
     if (read(config->sync_fd, &ready, 1) != 1 || ready != '1') {
-            _exit(127);
+            child_fail(config);
     }
     close(config->sync_fd);
 
     /* Root the cgroup namespace after the parent attaches this process. */
     if (unshare(CLONE_NEWCGROUP) != 0) {
         die("create cgroup namespace");
-        _exit(127);
+        child_fail(config);
     }
     if (config->log_fd >= 0) {
         if (dup2(config->log_fd, STDOUT_FILENO) < 0 ||
             dup2(config->log_fd, STDERR_FILENO) < 0) {
             die("redirect container log");
-            _exit(127);
+            child_fail(config);
         }
         if (config->log_fd > STDERR_FILENO)
             close(config->log_fd);
     }
     if (sethostname(config->hostname, strlen(config->hostname)) != 0) {
         die("set hostname");
-        _exit(127);
+        child_fail(config);
     }
     if (set_up_rootfs(config->rootfs,
                       config->container_name,
                       config->volumes,
                       config->volume_count) != 0) {
-        _exit(127);
+        child_fail(config);
     }
 
     if (config->bridge_network && network_configure_resolver() != 0) {
         die("configure container resolver");
-        _exit(127);
+        child_fail(config);
     }
 
     if (seccomp_config(config->seccomp_enabled,
         config->seccomp_denies,
         config->seccomp_deny_count) != 0){
         die("load seccomp filter");
-        _exit(127);
+        child_fail(config);
     }
 
     if (config->detach && setsid() == -1) {
         die("detach session");
-        _exit(127);
+        child_fail(config);
+    }
+
+    for (size_t i = 0; i < config->environment_count; ++i) {
+        char *assignment = strdup(config->environment[i]);
+        if (assignment == NULL)
+            child_fail(config);
+
+        char *equals = strchr(assignment, '=');
+        if (equals == NULL) {
+            free(assignment);
+            errno = EINVAL;
+            child_fail(config);
+        }
+        *equals = '\0';
+        if (setenv(assignment, equals + 1, 1) != 0) {
+            free(assignment);
+            child_fail(config);
+        }
+        free(assignment);
     }
 
     execvp(config->command[0], config->command);
     die("exec command");
-    _exit(127);
+    child_fail(config);
 }
 
 static int write_text_file(const char *path, const char *text)
@@ -337,7 +460,7 @@ static int map_user_and_group(pid_t pid)
     return 0;
 }
 
-int main(int argc, char **argv)
+static int run_container(int argc, char **argv, char **saved_argv, const char *start_name)
 {
     const char *rootfs = NULL;
     const char *image = NULL;
@@ -348,10 +471,13 @@ int main(int argc, char **argv)
     const char *seccomp_denies[MAX_SECCOMP_DENIES];
     size_t seccomp_deny_count = 0;
     bool detach = false;
+    bool log_output = false;
     bool bridge_network = false;
     const char *network_ip = NULL;
     struct container_volume volumes[MAX_VOLUMES] = { 0 };
     size_t volume_count = 0;
+    const char *environment[MAX_ENVIRONMENT] = { 0 };
+    size_t environment_count = 0;
     int index = 1;
 
     const char *cgroup_id = NULL;
@@ -396,6 +522,20 @@ int main(int argc, char **argv)
         else if (strcmp(argv[index], "--detach") == 0) {
             detach = true;
             ++index;
+        }
+        else if (strcmp(argv[index], "--log") == 0) {
+            log_output = true;
+            ++index;
+        }
+        else if ((strcmp(argv[index], "--env") == 0 ||
+                  strcmp(argv[index], "-e") == 0) && index + 1 < argc) {
+            if (environment_count == MAX_ENVIRONMENT ||
+                !valid_environment_assignment(argv[index + 1])) {
+                fprintf(stderr, "vcontainer: --env requires a valid NAME=VALUE\n");
+                return EXIT_FAILURE;
+            }
+            environment[environment_count++] = argv[index + 1];
+            index += 2;
         }
         else if (strcmp(argv[index], "--userns") == 0) {
             use_userns = true;
@@ -490,7 +630,7 @@ int main(int argc, char **argv)
             return EXIT_FAILURE;
         }
 
-        if (snprintf(image_rootfs, sizeof(image_rootfs), "/tmp/vcontainer-images/%s/rootfs", image) >=
+        if (snprintf(image_rootfs, sizeof(image_rootfs), "/var/lib/vcontainer/images/%s/rootfs", image) >=
             (int)sizeof(image_rootfs)) {
                 fprintf(stderr,"vcontainer: image path is too long\n");
                 return EXIT_FAILURE;
@@ -508,12 +648,18 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    if (cgroup_id == NULL || cgroup_id[0] == '\0' ||
+    if (cgroup_id == NULL || strcmp(cgroup_id, ".") == 0 ||
+        strcmp(cgroup_id, "..") == 0 || cgroup_id[0] == '\0' ||
         strspn(cgroup_id,
                "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
                "abcdefghijklmnopqrstuvwxyz"
                "0123456789_.-") != strlen(cgroup_id)) {
         fprintf(stderr, "vcontainer: --name must use letters, numbers, _, -, or .\n");
+        return EXIT_FAILURE;
+    }
+
+    if (start_name != NULL && strcmp(cgroup_id, start_name) != 0) {
+        fprintf(stderr, "vcontainer: saved container name does not match\n");
         return EXIT_FAILURE;
     }
 
@@ -531,7 +677,7 @@ int main(int argc, char **argv)
 
     int log_fd = -1;
 
-    if (detach) {
+    if (detach || log_output) {
         log_fd = log_open(cgroup_id);
         if (log_fd < 0) {
             die("open container log");
@@ -558,6 +704,13 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
+    int startup_pipe[2];
+    if (pipe2(startup_pipe, O_CLOEXEC) != 0) {
+        die("create startup pipe");
+        cgroup_call("destroy", cgroup_id, memory_max, pids_max,
+                    cpu_quota, cpu_period, 0);
+        return EXIT_FAILURE;
+    }
     int sync_pipe[2] = {-1, -1};
     if (pipe(sync_pipe) != 0) {
         die("create sync pipe");
@@ -598,6 +751,8 @@ int main(int argc, char **argv)
         .command = &argv[index + 1],
         .sync_fd = sync_pipe[0],
         .sync_write_fd = sync_pipe[1],
+        .startup_read_fd = startup_pipe[0],
+        .startup_write_fd = startup_pipe[1],
         .detach = detach,
         .bridge_network = bridge_network,
         .use_userns = use_userns,
@@ -605,6 +760,7 @@ int main(int argc, char **argv)
         .seccomp_deny_count = seccomp_deny_count,
         .seccomp_denies = { 0 },
         .volume_count = volume_count,
+        .environment_count = environment_count,
         .log_fd = log_fd,
         .container_name = cgroup_id,
     };
@@ -614,6 +770,9 @@ int main(int argc, char **argv)
     }
     for (size_t i = 0; i < volume_count; ++i) {
         config.volumes[i] = volumes[i];
+    }
+    for (size_t i = 0; i < environment_count; ++i) {
+        config.environment[i] = environment[i];
     }
 
     int flags = namespace_clone_flags(use_userns, true) | SIGCHLD;
@@ -626,6 +785,7 @@ int main(int argc, char **argv)
     }
 
     close(sync_pipe[0]);
+    close(startup_pipe[1]);
 
     bool child_ready = true;
 
@@ -652,6 +812,49 @@ int main(int argc, char **argv)
 
     close(sync_pipe[1]);
 
+    if (child_ready) {
+        struct pollfd startup = { .fd = startup_pipe[0], .events = POLLIN };
+        int ready;
+        do {
+            ready = poll(&startup, 1, 30000);
+        } while (ready < 0 && errno == EINTR);
+        int exec_error = 0;
+        ssize_t count = ready > 0 ? read(startup_pipe[0], &exec_error,
+                                        sizeof(exec_error)) : -1;
+        if (count != 0) {
+            fprintf(stderr, "vcontainer: startup failed: %s\n",
+                    count > 0 ? strerror(exec_error) : "startup timeout or pipe error");
+            kill(child, SIGKILL);
+            child_ready = false;
+        }
+    }
+    close(startup_pipe[0]);
+
+    if (child_ready) {
+        char pid_path[4096];
+        char pid_text[32];
+
+        int length = snprintf(pid_path, sizeof(pid_path),   
+            "/var/lib/vcontainer/containers/%s/init.pid", cgroup_id);
+
+        snprintf(pid_text, sizeof(pid_text), "%ld\n", (long)child);
+
+
+        if(length < 0 || length >= (int)sizeof(pid_path) ||
+            write_text_file(pid_path, pid_text) != 0) {
+                fprintf(stderr, "vcontainer: could not save container PID\n");
+                kill(child, SIGKILL);
+                child_ready = false;
+            }
+    }
+
+    if (child_ready &&
+        state_save_launch(cgroup_id, argc - 1, saved_argv + 1) != 0) {
+        die("save launch arguments");
+        kill(child, SIGKILL);
+        child_ready = false;
+    }
+
     if (!child_ready) {
         int failed_status;
         waitpid(child, &failed_status, 0);
@@ -674,7 +877,10 @@ int main(int argc, char **argv)
     int status;
 
     if(waitpid(child, &status, 0) == child) {
-        result = WIFEXITED(status) ? WEXITSTATUS(status) : EXIT_FAILURE;
+        if (WIFEXITED(status))
+            result = WEXITSTATUS(status);
+        else if (WIFSIGNALED(status))
+            result = 128 + WTERMSIG(status);
     } else {
         die("wait for container");
     }
@@ -700,5 +906,74 @@ int main(int argc, char **argv)
     close(sync_pipe[1]);*/
     //free(stack);
     munmap(mapping, mapping_size);
+    return result;
+}
+
+
+int main(int argc, char **argv) {
+    char **loaded_argv = NULL;
+    int loaded_argc = 0;
+    const char *start_name = NULL;
+
+    if (argc >= 2 && strcmp(argv[1], "start") == 0) {
+        if (argc != 3) {
+            fprintf(stderr, "Usage: vcontainer start NAME\n");
+            return EXIT_FAILURE;
+        }
+
+        start_name = argv[2];
+        if (state_load_launch(start_name, &loaded_argc, &loaded_argv) != 0) {
+            die("load saved launch arguments");
+            return EXIT_FAILURE;
+        }
+
+        char group[4096];
+        int length = snprintf(group, sizeof(group),
+            "/sys/fs/cgroup/vcontainer/%s", start_name);
+        if (length < 0 || length >= (int)sizeof(group)) {
+            fprintf(stderr, "vcontainer: container path too long\n");
+            state_free_launch(loaded_argc, loaded_argv);
+            return EXIT_FAILURE;
+        }
+
+        if (access(group, F_OK) == 0) {
+            fprintf(stderr,
+                "vcontainer: container has an existing cgroup; "
+                "run stop %s before starting it\n", start_name);
+            state_free_launch(loaded_argc, loaded_argv);
+            return EXIT_FAILURE;
+        }
+        if (errno != ENOENT) {
+            die("check container cgroup");
+            state_free_launch(loaded_argc, loaded_argv);
+            return EXIT_FAILURE;
+        }
+
+        argc = loaded_argc;
+        argv = loaded_argv;
+    }
+
+    char **saved_argv = calloc((size_t)argc + 1, sizeof(*saved_argv));
+    if (saved_argv == NULL){
+        die("allocate launch arguments");
+        state_free_launch(loaded_argc, loaded_argv);
+        return EXIT_FAILURE;
+    }
+
+    for (int i = 0; i < argc; ++i) {
+        saved_argv[i] = strdup(argv[i]);
+
+        if(saved_argv[i] == NULL){
+            die("copy launch argument");
+            state_free_launch(i, saved_argv);
+            state_free_launch(loaded_argc, loaded_argv);
+            return EXIT_FAILURE;
+        }
+    }
+
+    int result = run_container(argc, argv, saved_argv, start_name);
+
+    state_free_launch(argc, saved_argv);
+    state_free_launch(loaded_argc, loaded_argv);
     return result;
 }

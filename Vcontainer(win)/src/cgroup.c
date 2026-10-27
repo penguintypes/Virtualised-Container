@@ -22,7 +22,7 @@ int cgroup_call(const char *action, const char *id,
     if (bash_pid == 0){
         char *args[] = {
             "/bin/bash",
-            "./cgroup.sh",
+            "/opt/vcontainer/libexec/cgroup.sh",
             (char *)action,
             (char *)id,
             (char *)memory_max,

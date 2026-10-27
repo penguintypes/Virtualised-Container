@@ -22,6 +22,12 @@ case "$action" in
 
         mkdir "$group"
         echo "$memory_max" > "$group/memory.max"
+
+        if [ "$memory_max" != "max" ] &&
+            [ -w "$group/memory.swap.max" ]; then
+            echo 0 > "$group/memory.swap.max"
+        fi
+
         echo "$pid_max" > "$group/pids.max"
         echo "$cpu_quota $cpu_period" > "$group/cpu.max"
         ;;
@@ -38,7 +44,16 @@ case "$action" in
         ;;
 
     destroy)
-        rmdir "$group"
+        # Namespace exit and cgroup.kill do not synchronously release all tasks.
+        for attempt in $(seq 1 100); do
+            [ -d "$group" ] || exit 0
+            if grep -q "^populated 0$" "$group/cgroup.events"; then
+                rmdir "$group" 2>/dev/null && exit 0
+            fi
+            sleep 0.05
+        done
+        echo "cgroup still busy: $id" >&2
+        exit 1
         ;;
 
     *)
