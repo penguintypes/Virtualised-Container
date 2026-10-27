@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en" data-theme="dark"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>vcontainer</title><link rel="stylesheet" href="/static/style.css?v=14"></head><body>
+<aside>
+  <div class="brand"><span class="logo">▣</span> vcontainer</div>
+  <nav>
+    <a href="#/home" data-nav="home">Home</a>
+    <div class="grp">Manage</div>
+    <a href="#/containers" data-nav="containers">Containers</a>
+    <a href="#/images" data-nav="images">Images</a>
+  </nav>
+  <div class="foot"><div id="health" class="muted">Checking backend…</div><button class="ghost" data-act="theme">◐ Toggle theme</button></div>
+</aside>
+<main>
+  <div id="banner" class="banner hidden"></div>
+  <header class="top"><h1 id="title">Home</h1><div id="actions"></div></header>
+  <section id="view"></section>
+</main>
+<dialog id="run"><form id="runform"><h3>Run container</h3>
+  <label>Image<select id="image"></select></label>
+  <label>Name<input id="name" required pattern="[A-Za-z0-9_.-]+"></label>
+  <label>Command<input id="command" placeholder="optional"></label>
+  <label>Memory<input id="memory" placeholder="250M"></label>
+  <label>CPUs<input id="cpus" placeholder="50000/100000"></label>
+  <label>PIDs<input id="pids" placeholder="64"></label>
+  <label>Port<input id="port" placeholder="8081:8081"></label>
+  <p class="row"><button type="button" data-act="close" data-dlg="run">Cancel</button><button class="primary" id="rungo">Run</button></p></form></dialog>
+<dialog id="build"><form id="buildform"><h3>Build from VC File</h3>
+  <label>VC File path<input id="bfile" value="samples/blog/Vcfile" required></label>
+  <label class="chk"><input type="checkbox" id="bclean"> Bypass cache (--clean)</label>
+  <label class="chk"><input type="checkbox" id="bupdate"> Force base image update (--update)</label>
+  <p class="row"><button type="button" data-act="close" data-dlg="build">Cancel</button><button class="primary" id="bgo">Build</button></p></form></dialog>
+<input type="file" id="up" accept=".tar" hidden>
+<script src="/static/app.js?v=13"></script></body></html>
