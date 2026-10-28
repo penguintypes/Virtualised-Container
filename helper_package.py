@@ -1,13 +1,12 @@
 """Download and verify the privileged WSL helper release."""
 
-from contextlib import contextmanager
 import hashlib
-from pathlib import Path
 import shutil
 import tempfile
 import urllib.request
 import zipfile
-
+from contextlib import contextmanager
+from pathlib import Path
 
 HELPER_VERSION = "0.2.0"
 HELPER_URL = (
@@ -17,8 +16,8 @@ HELPER_URL = (
     f"vcontainer-helpers-v{HELPER_VERSION}.zip"
 )
 HELPER_SHA256 = (
-    "874fb1add98fc160c956c0dc5b6bda89"
-    "37f627f6074385458a0d43c636c07054" 
+    "21d510e2d1c75c7ce6d88df5e5795f5"
+    "2c51b383928d31a4f1f03559c2874369e"
 )
 EXPECTED_HELPERS = {
     "vcontainer-read",
@@ -32,8 +31,10 @@ MAX_ARCHIVE_BYTES = 2 * 1024 * 1024
 @contextmanager
 def downloaded_helpers():
     local = (
-        Path(__file__).resolve().parent.parent
-        / "helper" / "vcontainer-helper" / "helpers"
+        Path(__file__).resolve().parent
+        / "helper"
+        / "vcontainer-helper"
+        / "helpers"
     )
     if local.is_dir() and {
         path.name for path in local.iterdir() if path.is_file()
@@ -85,9 +86,11 @@ def downloaded_helpers():
                     raise RuntimeError(
                         f"Unexpected helper archive entry: {member.filename}"
                     )
-                with package.open(member) as source:
-                    with (extracted / name).open("wb") as destination:
-                        shutil.copyfileobj(source, destination)
+                with (
+                    package.open(member) as source,
+                    (extracted / name).open("wb") as destination,
+                ):
+                    shutil.copyfileobj(source, destination)
                 discovered.add(name)
 
         if discovered != EXPECTED_HELPERS:
