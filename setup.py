@@ -12,7 +12,8 @@ PROJECT = ROOT if (ROOT / "api").is_dir() else ROOT / "Virtualised-Container-vco
     PROJECT = ROOT / "Virtualised-Container-vcontainer-arm-_backend" '''
 
 API = PROJECT / "api"
-ENGINE = PROJECT / "Vcontainer(win)"
+WINDOWS_CLIENT = PROJECT / "Vcontainer(win)"
+ENGINE = WINDOWS_CLIENT / "engine"
 DISTRO = "Ubuntu"
 USER = "vcdev"
 
@@ -157,10 +158,11 @@ def setup_python():
 
     # Dependencies come from api/pyproject.toml and uv.lock.
     run(*uv, "sync", cwd=API)
+    run(*uv, "sync", "--all-groups", cwd=WINDOWS_CLIENT)
 
     run(
         *uv, "run", "python", "-c",
-        "from api.main import app; print('API imports successfully')",
+        "from vcontainer_api.main import app; print('API imports successfully')",
         cwd=API,
     )
 
@@ -191,7 +193,8 @@ def main():
         raise SystemExit("Run this installer using Windows Python.")
 
     for path in (
-        API / "pyproject.toml", ENGINE / "Makefile",
+        API / "pyproject.toml", WINDOWS_CLIENT / "pyproject.toml",
+        ENGINE / "Makefile",
         ENGINE / "run_container.sh",
         PROJECT / "tests" / "verify_install.sh",
     ):

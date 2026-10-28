@@ -1,128 +1,119 @@
 # Vcontainer
 
-Vcontainer is a lightweight, educational Linux container engine with a Windows
-workflow powered by WSL 2. It combines a small C runtime with a Python CLI, a
-FastAPI management service, and a browser GUI.
+Vcontainer is a small Linux container engine with a Windows interface built on
+WSL 2. The runtime is written in C. A local FastAPI service exposes the runtime
+to the Windows command-line client and desktop application.
 
-The runtime creates containers directly with Linux namespaces, cgroups v2,
-OverlayFS, seccomp, virtual Ethernet devices, and pivot-root isolation. It does
-not depend on Docker or Podman to run containers.
+The engine creates containers with Linux namespaces, cgroups v2, OverlayFS,
+seccomp, and virtual Ethernet devices. Docker and Podman are not required to run
+a container. Skopeo and Umoci handle image downloads and OCI unpacking.
 
-> Vcontainer is an experimental and educational project. It is not currently a
-> production replacement for Docker, Podman, containerd, or Kubernetes.
+Vcontainer is an educational project. It is useful for learning how container
+runtimes work and for testing the project's own container workflow. It has not
+had the compatibility or security review required for production workloads.
 
-## Goals
+## What works
 
-- Learn and demonstrate the Linux primitives behind containers.
-- Provide a simple Windows experience through WSL 2.
-- Keep the container execution engine small and daemonless.
-- Support images, volumes, networking, limits, logs, metrics, and Compose.
-- Expose the runtime through a CLI, HTTP API, and browser GUI.
-- Remain understandable enough for students to inspect and extend.
-
-## Features
-
-- OCI/Docker image import using Skopeo and Umoci.
-- PID, mount, UTS, IPC, network, and user namespace isolation.
-- cgroups v2 CPU, memory, and process limits.
-- OverlayFS writable layers and persistent container state.
-- Seccomp syscall filtering.
-- Bridge networking and TCP port publishing to Windows localhost.
-- Named persistent volumes, environment variables, and custom commands.
-- Start, stop, remove, logs, inspection, and process information.
-- CPU, memory, process, network, block-I/O, and container disk metrics.
-- Compose validation and lifecycle commands.
-- FastAPI/OpenAPI management API and browser GUI.
+- OCI and Docker image pulls
+- foreground and detached containers
+- start, stop, inspect, remove, exec, and logs
+- CPU, memory, and process limits through cgroups v2
+- process, network, block I/O, memory, and CPU metrics
+- bridge networking with TCP ports published to Windows localhost
+- named volumes and persistent writable container layers
+- environment variables, hostnames, and command overrides
+- Compose files for supported services, volumes, ports, and dependencies
+- browser and PyWebView interfaces backed by the same HTTP API
 
 ## Requirements
 
-- Windows 10 or Windows 11 with WSL 2.
-- Ubuntu installed as a WSL 2 distribution.
-- Windows Python 3.12 or newer.
-- An internet connection during setup and image pulls.
-- Hardware virtualization enabled.
+- Windows 10 or Windows 11
+- WSL 2 with Ubuntu
+- Python 3.12 or newer on Windows
+- hardware virtualization
+- internet access during installation and image pulls
 
-Install Ubuntu when necessary:
+Install Ubuntu and check its WSL version:
 
 ```powershell
 wsl --install -d Ubuntu
-```
-
-Confirm that it uses WSL 2:
-
-```powershell
 wsl --list --verbose
 ```
 
-## Installation
+The Ubuntu row should show version `2`.
 
-Run the installer from this repository directory using Windows Python:
+## Install
+
+Run the installer from the repository root:
 
 ```powershell
 python setup.py
 ```
 
-The installer checks WSL and kernel features, prepares the `vcdev` Linux user,
-installs build and image dependencies, builds the C engine, creates the Python
-environment with `uv`, installs restricted helpers, starts the API service, and
-runs verification tests.
+The installer adds the Linux build dependencies, builds the C engine, installs
+the restricted WSL helpers, prepares both `uv` projects, installs the API as a
+systemd service, and runs the installation checks.
 
-Defaults:
+The default configuration is:
 
 ```text
 WSL distribution: Ubuntu
-Linux user:        vcdev
-API address:       http://127.0.0.1:8010
+WSL user:         vcdev
+API:              http://127.0.0.1:8010
 ```
 
-Override launcher settings when needed:
+Set another distribution or user before running the client:
 
 ```powershell
 $env:VCONTAINER_WSL_DISTRO = "Ubuntu"
 $env:VCONTAINER_WSL_USER = "vcdev"
 ```
 
-## Quick start
-
-Commands below assume PowerShell is open in this repository directory.
+## First container
 
 ```powershell
-# Pull an image
 python "Vcontainer(win)/vcontainer.py" pull alpine
 
-# Run a foreground command
-python "Vcontainer(win)/vcontainer.py" run alpine --name hello -- /bin/echo "Hello from Vcontainer"
+python "Vcontainer(win)/vcontainer.py" run alpine `
+  --name hello `
+  -- /bin/echo "Hello from Vcontainer"
 
-# Run a web server and publish it to Windows
-python "Vcontainer(win)/vcontainer.py" run nginx --name web -d -p 8080:80
-
-# List images and containers
-python "Vcontainer(win)/vcontainer.py" list
 python "Vcontainer(win)/vcontainer.py" ps
 ```
 
-Open [http://127.0.0.1:8080](http://127.0.0.1:8080) for the Nginx example.
-
-Pull a registry image under a local name:
+Run Nginx and publish its port to Windows:
 
 ```powershell
-python "Vcontainer(win)/vcontainer.py" pull mint ghcr.io/mint-lang/mint:latest
+python "Vcontainer(win)/vcontainer.py" pull nginx
+python "Vcontainer(win)/vcontainer.py" run nginx --name web -d -p 8080:80
 ```
 
-## CLI commands
-
-The Windows launcher is:
+Open [http://127.0.0.1:8080](http://127.0.0.1:8080), then stop and remove the
+container:
 
 ```powershell
-python "Vcontainer(win)/vcontainer.py" COMMAND
+python "Vcontainer(win)/vcontainer.py" stop web
+python "Vcontainer(win)/vcontainer.py" rm web
 ```
+
+## Command reference
+
+The root launcher keeps the command stable even though the implementation lives
+in `Vcontainer(win)/src/vcontainer_cli`.
 
 ### Images
 
 ```powershell
 python "Vcontainer(win)/vcontainer.py" list
-python "Vcontainer(win)/vcontainer.py" pull LOCAL_NAME [REMOTE_REFERENCE]
+python "Vcontainer(win)/vcontainer.py" pull LOCAL_NAME
+python "Vcontainer(win)/vcontainer.py" pull LOCAL_NAME REGISTRY/IMAGE:TAG
 python "Vcontainer(win)/vcontainer.py" delete IMAGE
+```
+
+Example with a registry reference:
+
+```powershell
+python "Vcontainer(win)/vcontainer.py" pull mint ghcr.io/mint-lang/mint:latest
 ```
 
 ### Containers
@@ -132,74 +123,70 @@ python "Vcontainer(win)/vcontainer.py" ps
 python "Vcontainer(win)/vcontainer.py" inspect NAME
 python "Vcontainer(win)/vcontainer.py" logs NAME
 python "Vcontainer(win)/vcontainer.py" logs -f NAME
-python "Vcontainer(win)/vcontainer.py" exec NAME -- /bin/sh
+python "Vcontainer(win)/vcontainer.py" exec NAME -- COMMAND [ARGS...]
 python "Vcontainer(win)/vcontainer.py" start NAME
 python "Vcontainer(win)/vcontainer.py" stop NAME
 python "Vcontainer(win)/vcontainer.py" rm NAME
 ```
 
-### Run options
-
-```text
---name NAME                    Required container name
--d, --detach                  Run in the background
---hostname NAME                Container hostname
---memory-max 512M              Memory limit
---pids-max 128                 Process limit
---cpu-max QUOTA PERIOD         CPU quota and period
---network bridge               Attach to the Vcontainer bridge
---ip 10.88.0.20                Static bridge address
--p, --publish 8080:80          Publish a TCP port
--v, --volume NAME:/TARGET      Mount a named volume
--e, --env NAME=VALUE           Set an environment variable
--- COMMAND [ARGS...]           Override the image command
-```
-
-Example with limits and environment:
+Create a container with resource limits:
 
 ```powershell
 python "Vcontainer(win)/vcontainer.py" run alpine `
   --name worker `
+  --hostname worker-1 `
   --memory-max 256M `
   --pids-max 64 `
   --cpu-max 50000 100000 `
   -e MODE=development `
+  -d `
   -- /bin/sleep 300
 ```
 
-When a published port is requested without explicit networking, the API allocates
-a bridge address automatically.
+Supported `run` options:
 
-## Persistent volumes
+```text
+--name NAME                    required container name
+-d, --detach                  run in the background
+--hostname NAME                set the container hostname
+--memory-max SIZE              set the memory limit, for example 256M
+--pids-max COUNT               set the process limit
+--cpu-max QUOTA PERIOD         set the cgroup CPU quota and period
+--network bridge               attach the container to the bridge
+--ip ADDRESS                   request a bridge address
+-p, --publish HOST:CONTAINER   publish a TCP port
+-v, --volume NAME:/TARGET      mount a named volume
+-e, --env NAME=VALUE           set an environment variable
+-- COMMAND [ARGS...]           override the image command
+```
+
+If `-p` is present without `--network` and `--ip`, the API assigns an available
+bridge address.
+
+### Volumes
 
 ```powershell
 python "Vcontainer(win)/vcontainer.py" volume create app-data
 python "Vcontainer(win)/vcontainer.py" volume list
 python "Vcontainer(win)/vcontainer.py" volume inspect app-data
+python "Vcontainer(win)/vcontainer.py" volume remove app-data
 ```
 
-Mount it inside a container:
+Mount a volume:
 
 ```powershell
 python "Vcontainer(win)/vcontainer.py" run alpine `
   --name volume-demo `
-  -d `
   -v app-data:/data `
-  -- /bin/sleep 300
+  -- /bin/sh -c "echo saved > /data/message.txt"
 ```
 
-Data written to `/data` remains after the container is stopped or removed. Volume
-removal is rejected while the volume is in use or non-empty.
+### Compose
 
-```powershell
-python "Vcontainer(win)/vcontainer.py" volume remove app-data
-```
-
-## Compose
-
-Vcontainer uses its bundled Compose-Go executable to validate and normalize YAML.
-The supported subset includes images, commands, environment variables, named
-volumes, published TCP ports, dependencies, and static bridge addresses.
+Vcontainer uses the bundled Compose-Go parser to normalize YAML before the
+Windows client creates containers. The supported subset covers images, commands,
+environment variables, named volumes, TCP ports, service dependencies, and
+static bridge addresses.
 
 ```powershell
 $config = "C:\path\to\config.yaml"
@@ -212,168 +199,214 @@ python "Vcontainer(win)/vcontainer.py" compose start $config
 python "Vcontainer(win)/vcontainer.py" compose down $config
 ```
 
-- `up` creates missing containers and starts stopped containers.
-- `stop` stops services in reverse dependency order and preserves metadata.
-- `start` starts existing services in dependency order.
-- `down` removes project containers but preserves named volumes.
-- `ps` groups service names, container names, and current states.
+`stop` keeps container metadata and volumes. `start` runs the stopped services
+again. `down` removes the project containers but keeps named volumes.
 
-`compose up` is idempotent: it leaves running containers alone, starts matching
-stopped containers, and creates only missing containers.
+## GUI and API
 
-## Browser GUI
+The installer starts the API at these addresses:
 
-After installation, open:
+- dashboard: [http://127.0.0.1:8010](http://127.0.0.1:8010)
+- OpenAPI documentation: [http://127.0.0.1:8010/docs](http://127.0.0.1:8010/docs)
 
-- GUI: [http://127.0.0.1:8010](http://127.0.0.1:8010)
-- API documentation: [http://127.0.0.1:8010/docs](http://127.0.0.1:8010/docs)
-
-The GUI supports container lifecycle and resource controls, images, named volumes,
-persistent volume attachments, logs, process information, metrics, published-port
-links, container-only disk usage, and light/dark themes.
-
-## Architecture
-
-```text
-Windows
-├── vcontainer.py                 CLI and Compose workflow
-└── Browser GUI                   Management interface
-        │
-        │ HTTP on 127.0.0.1:8010
-        ▼
-WSL 2 / Ubuntu
-├── vcontainer-api.service        FastAPI management service (vcdev)
-│   └── restricted sudo helpers   Validated privileged operations
-│
-├── /opt/vcontainer/bin/
-│   ├── vcontainer                C container runtime
-│   └── vcontainer-cli            Linux command wrapper
-│
-├── Linux isolation
-│   ├── namespaces
-│   ├── cgroups v2
-│   ├── OverlayFS
-│   ├── seccomp
-│   └── bridge/veth networking
-│
-└── /var/lib/vcontainer/          Persistent runtime data
-```
-
-### Execution flow
-
-1. The CLI or GUI sends a validated request to the local API.
-2. The API invokes a narrowly scoped privileged helper.
-3. The helper converts the request into approved runtime arguments.
-4. The C engine creates namespaces, cgroups, mounts, networking, and the child.
-5. Runtime state is saved under `/var/lib/vcontainer` and exposed through the API.
-
-### Daemonless engine and management service
-
-The C execution engine is daemonless: containers are normal Linux processes and do
-not require a long-running engine daemon. The FastAPI systemd service is a local
-management plane for the Windows CLI and GUI. It reads state and performs validated
-lifecycle operations, but it is not the parent runtime for every container.
-
-## Runtime storage
-
-```text
-/opt/vcontainer/bin/                 Installed engine and CLI wrapper
-/opt/vcontainer/libexec/             Linux runtime scripts
-/usr/local/sbin/vcontainer-*         Restricted API helpers
-/var/lib/vcontainer/images/          Imported image root filesystems
-/var/lib/vcontainer/containers/      Container state and writable layers
-/var/lib/vcontainer/volumes/         Named persistent volumes
-/var/lib/vcontainer/oci/             OCI image working data
-/home/vcdev/vcontainer-api/          Installed API environment and sources
-```
-
-Container state can include configuration, saved launch arguments, lifecycle data,
-logs, port data, and OverlayFS `upper`, `work`, and `merged` directories.
-
-## API overview
-
-```text
-GET    /health
-GET    /system/disk
-
-GET    /images
-POST   /images/pull
-DELETE /images/{name}
-
-GET    /containers
-POST   /containers
-GET    /containers/{name}
-POST   /containers/{name}/start
-POST   /containers/{name}/stop
-PATCH  /containers/{name}/resources
-DELETE /containers/{name}
-
-GET    /containers/{name}/logs
-GET    /containers/{name}/logs/stream
-GET    /containers/{name}/metrics
-GET    /containers/{name}/metrics/stream
-GET    /containers/{name}/processes
-
-GET    /volumes
-POST   /volumes
-GET    /volumes/{name}
-DELETE /volumes/{name}
-```
-
-See `/docs` for schemas and interactive requests.
-
-## Development
-
-Rebuild and reinstall the project:
+Run the desktop window from the repository root:
 
 ```powershell
-python setup.py
+uv run --project "Vcontainer(win)" vcontainer-gui
 ```
 
-Update only the API service:
+The dashboard and desktop window use the same static interface and API.
+
+## Standalone Windows executables
+
+PyInstaller can package the CLI and desktop application as single executable
+files. A one-file build extracts its Python runtime to a temporary directory when
+it starts, so it opens more slowly than a normal Python command.
+
+Build the GUI from the repository root:
 
 ```powershell
-python setup_api_service.py
+uv run --project "Vcontainer(win)" pyinstaller `
+  --noconfirm `
+  --clean `
+  --onefile `
+  --windowed `
+  --name vcontainer-gui `
+  --paths "Vcontainer(win)/src" `
+  --collect-all webview `
+  --distpath "Vcontainer(win)" `
+  --workpath "Vcontainer(win)/build/pyinstaller-gui" `
+  --specpath "Vcontainer(win)/build" `
+  "Vcontainer(win)/src/vcontainer_desktop/vcontainer_gui.py"
 ```
 
-Run the API in Windows development mode:
+The output is `Vcontainer(win)/vcontainer-gui.exe`.
+
+Build the CLI:
 
 ```powershell
-cd api
-uv sync
-uv run uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload
+cd "Vcontainer(win)"
+
+$engineData = ((Resolve-Path "engine/run_container.sh").Path + ";engine")
+$composeData = ((Resolve-Path "vendor/compose/compose.exe").Path + ";vendor/compose")
+
+uv run pyinstaller `
+  --noconfirm `
+  --clean `
+  --onefile `
+  --name vcontainer `
+  --paths src `
+  --add-data $engineData `
+  --add-data $composeData `
+  --distpath . `
+  --workpath "build/pyinstaller-cli-onefile" `
+  --specpath build `
+  vcontainer.py
 ```
 
-Run integration tests from WSL:
+The output is `Vcontainer(win)/vcontainer.exe`. Return to the repository root
+before using commands from the remaining sections:
+
+```powershell
+cd ..
+```
+
+Run the packaged applications:
+
+```powershell
+& "Vcontainer(win)/vcontainer-gui.exe"
+& "Vcontainer(win)/vcontainer.exe" ps
+```
+
+Install the commands in your user `PATH`:
+
+```powershell
+& "Vcontainer(win)/scripts/vcontainer-cli-global.ps1"
+```
+
+Open a new PowerShell window. The executables can then be called from any
+directory:
+
+```powershell
+vcontainer ps
+vcontainer list
+vcontainer-gui
+```
+
+Remove the directory from your user `PATH`:
+
+```powershell
+& "Vcontainer(win)/scripts/vcontainer-cli-unglobal.ps1"
+```
+
+The unglobal script only changes `PATH`. It does not delete either executable.
+
+The generated executables, PyInstaller work directories, and old onedir output
+folders are excluded by `.gitignore`.
+
+## Repository layout
+
+```text
+api/                         FastAPI service installed in WSL
+helper/vcontainer-helper/    restricted privileged helper package
+Vcontainer(win)/
+  engine/                    C runtime and Linux wrapper
+  src/vcontainer_cli/        Windows CLI and Compose orchestration
+  src/vcontainer_desktop/    PyWebView desktop launcher
+  vendor/compose/            bundled Compose-Go executable and sources
+  machine/                   WSL machine experiments
+docs/                        architecture and development notes
+tests/                       installation, WSL, and benchmark tests
+```
+
+The detailed component and request flows are in
+[docs/architecture.md](docs/architecture.md).
+
+## Development commands
+
+Prepare the Python environments:
+
+```powershell
+uv sync --project api --all-groups
+uv sync --project "Vcontainer(win)" --all-groups
+```
+
+Run the API from Windows for development:
+
+```powershell
+uv run --project api uvicorn vcontainer_api.main:app `
+  --host 127.0.0.1 `
+  --port 8000 `
+  --reload
+```
+
+Run lint and tests:
+
+```powershell
+uv run --project api ruff check api/src/vcontainer_api api/tests
+uv run --project api pytest api/tests -q
+
+uv run --project "Vcontainer(win)" ruff check `
+  "Vcontainer(win)/vcontainer.py" `
+  "Vcontainer(win)/src"
+
+uv run --project "Vcontainer(win)" pytest `
+  "Vcontainer(win)/tests/test_vcontainer.py" `
+  "Vcontainer(win)/tests/test_launcher.py" `
+  -q
+```
+
+Build the C engine from WSL:
+
+```bash
+cd "/mnt/c/path/to/repository/Vcontainer(win)/engine"
+make clean
+make
+```
+
+Run the WSL regression checks from the repository root inside WSL:
 
 ```bash
 bash tests/verify_install.sh
 bash tests/rest_cases.sh
 ```
 
-## Troubleshooting
+Reinstall only the API service after changing API or helper code:
+
+```powershell
+python setup_api_service.py
+```
+
+## Service diagnostics
 
 ```powershell
 wsl -d Ubuntu -u root --exec systemctl status vcontainer-api --no-pager
 wsl -d Ubuntu -u root --exec journalctl -u vcontainer-api -n 100 --no-pager
-wsl --list --verbose
 wsl -d Ubuntu --exec stat -fc %T /sys/fs/cgroup
+wsl --list --verbose
 ```
 
-If Ubuntu reports repository metadata as “not valid yet,” synchronize the Windows
-clock and restart WSL before running setup again.
+Stop or restart the API service:
 
-## Current limitations
+```powershell
+wsl -d Ubuntu -u root --exec systemctl stop vcontainer-api
+wsl -d Ubuntu -u root --exec systemctl restart vcontainer-api
+```
 
-- Linux containers only; Windows containers are not supported.
-- WSL 2 and the configured Ubuntu distribution are required on Windows.
-- Compose supports a practical subset rather than every Compose key.
-- Networking and port publishing are simpler than mature production engines.
-- Kubernetes-compatible pod support is not currently implemented.
-- Security hardening and compatibility coverage remain experimental.
+If `apt` says a repository release file is not valid yet, restart WSL after
+correcting the Windows clock:
 
-## Project direction
+```powershell
+wsl --shutdown
+```
 
-Planned work includes a GUI Compose/project view, broader image compatibility,
-stronger lifecycle supervision, expanded tests, performance measurement, and
-continued reduction of startup and management overhead.
+## Current limits
+
+- Vcontainer runs Linux containers only.
+- The Windows workflow requires WSL 2 and the configured distribution.
+- Compose support covers the fields used by this project, not the full Compose
+  specification.
+- Port publishing and networking are smaller in scope than Docker or Podman.
+- Kubernetes pods are not implemented.
+- Detached lifecycle supervision and image compatibility still need broader
+  testing.

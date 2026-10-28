@@ -71,7 +71,7 @@ if [ ! -x "$HOME/.local/bin/uv" ]; then
 fi
 cd "$1"
 "$HOME/.local/bin/uv" sync --locked --python 3.12
-.venv/bin/python -c 'from api.main import app; print("Linux API imports successfully")'
+.venv/bin/python -c 'from vcontainer_api.main import app; print("Linux API imports successfully")'
 USER_SETUP
 
 cat > /etc/systemd/system/vcontainer-api.service <<UNIT
@@ -84,7 +84,7 @@ Type=simple
 User=$user
 WorkingDirectory=$api_dir
 Environment=PYTHONUNBUFFERED=1
-ExecStart="$api_dir/.venv/bin/python" -m uvicorn api.main:app --host 127.0.0.1 --port 8010
+ExecStart="$api_dir/.venv/bin/python" -m uvicorn vcontainer_api.main:app --host 127.0.0.1 --port 8010
 Restart=on-failure
 RestartSec=2
 
@@ -137,8 +137,12 @@ def install():
         raise SystemExit("Choose a normal Linux user for VCONTAINER_WSL_USER.")
     root = Path(__file__).resolve().parent
     source = root / "api"
-    wrapper = root / "Vcontainer(win)" / "run_container.sh"
-    for name in ("pyproject.toml", "uv.lock", "src/api/main.py"):
+    wrapper = root / "Vcontainer(win)" / "engine" / "run_container.sh"
+    for name in (
+        "pyproject.toml",
+        "uv.lock",
+        "src/vcontainer_api/main.py",
+    ):
         if not (source / name).is_file():
             raise SystemExit(f"Missing API source: {source / name}")
     for path in (wrapper,):
