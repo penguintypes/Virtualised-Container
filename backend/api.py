@@ -40,7 +40,11 @@ class VcApiHandler(BaseHTTPRequestHandler):
         try:
             url_chunks = self.path.strip("/").split("/")
             # container deletion
-            if len(url_chunks) == 2 and url_chunks[0] == "containers":
+            if len(url_chunks) == 2 and url_chunks[0] == "volumes":
+                engine.run_volume("remove", core.valid_name(url_chunks[1]))
+                return self.respond_with_json(204)
+
+            if len(url_chunks) == 2 and url_chunks[0] == "containers":" 
                 engine.remove(core.valid_name(url_chunks[1]))
                 return self.respond_with_json(204)
             
@@ -132,18 +136,38 @@ class VcApiHandler(BaseHTTPRequestHandler):
             if parsed_path == "/health":
                 return self.respond_with_json(200, {"ok": True, "capabilities": engine.capabilities()})
             
-            if parsed_path == "/system":
+            if parsed_path == "/system/disk":
+                return self.respond_with_json(200, engine.get_disk_usage())
+
+            if parsed_path == "/volumes":
+                return self.respond_with_json(200, {"volumes": engine.run_volume("list")})
+
+            if parsed_path.startswith("/volumes/") and len(parsed_path.strip("/").split("/")) == 2:
+                v_name = parsed_path.strip("/").split("/")[1]
+                return self.respond_with_json(200, engine.run_volume("inspect", v_name))
+
+            if parsed_path == "/system":" 
                 return self.respond_with_json(200, engine.host_stats())
             
             if parsed_path == "/images":
                 return self.respond_with_json(200, engine.images())
             
-            if parsed_path == "/containers":
+            if parsed_path == "/volumes":
+                vol_name = req_data.get("name")
+                if not vol_name:
+                    return self.fail_out("volume name required")
+                return self.respond_with_json(201, engine.run_volume("create", vol_name))
+
+            if parsed_path == "/containers":" 
                 return self.respond_with_json(200, engine.containers())
             
             url_chunks = parsed_path.strip("/").split("/")
             
-            if len(url_chunks) == 2 and url_chunks[0] == "containers":
+            if len(url_chunks) == 2 and url_chunks[0] == "volumes":
+                engine.run_volume("remove", core.valid_name(url_chunks[1]))
+                return self.respond_with_json(204)
+
+            if len(url_chunks) == 2 and url_chunks[0] == "containers":" 
                 return self.respond_with_json(200, engine.inspect(core.valid_name(url_chunks[1])))
             
             if len(url_chunks) == 3 and url_chunks[0] == "containers" and url_chunks[2] == "stats":

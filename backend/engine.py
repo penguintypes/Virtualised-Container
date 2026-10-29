@@ -161,6 +161,28 @@ def inspect(name):
         data["cpu_pct"] = round(((usec - last_usec) / 1000000.0) / dt * 100, 1) if dt > 0 else 0.0
     except Exception:
         data["cpu_pct"] = 0.0
+    try:
+        from pathlib import Path
+        stat_text = Path(f"/sys/fs/cgroup/vcontainer/{name}/cpu.stat").read_text()
+        usec = int([line.split()[1] for line in stat_text.splitlines() if line.startswith("usage_usec")][0])
+        now = time.time()
+        last_now, last_usec = _cpu_cache.get(name, (now - 0.1, usec))
+        _cpu_cache[name] = (now, usec)
+        dt = now - last_now
+        data["cpu_pct"] = round(((usec - last_usec) / 1000000.0) / dt * 100, 1) if dt > 0 else 0.0
+    except Exception:
+        data["cpu_pct"] = 0.0
+    try:
+        from pathlib import Path
+        stat_text = Path(f"/sys/fs/cgroup/vcontainer/{name}/cpu.stat").read_text()
+        usec = int([line.split()[1] for line in stat_text.splitlines() if line.startswith("usage_usec")][0])
+        now = time.time()
+        last_now, last_usec = _cpu_cache.get(name, (now - 0.1, usec))
+        _cpu_cache[name] = (now, usec)
+        dt = now - last_now
+        data["cpu_pct"] = round(((usec - last_usec) / 1000000.0) / dt * 100, 1) if dt > 0 else 0.0
+    except Exception:
+        data["cpu_pct"] = 0.0
     return record | data
 
 def containers():
@@ -217,3 +239,48 @@ def host_stats():
     cpu_times = [int(x) for x in Path("/proc/stat").read_text().splitlines()[0].split()[1:]]
     return {"cpus": os.cpu_count(), "cpu_times": cpu_times, "load": list(os.getloadavg()),
             "mem_total": meminfo.get("MemTotal"), "mem_available": meminfo.get("MemAvailable")}
+
+def get_disk_usage():
+    import subprocess
+    volumes_dir = "/var/lib/vcontainer/volumes"
+    containers_dir = "/var/lib/vcontainer/containers"
+    images_dir = "/var/lib/vcontainer/images"
+    total_bytes = 0
+    container_count = len(_load())
+    for d in [volumes_dir, containers_dir, images_dir]:
+        if os.path.exists(d):
+            res = subprocess.run(["sudo", "-n", "du", "-sb", d], capture_output=True, text=True)
+            if res.returncode == 0 and res.stdout.strip():
+                try:
+                    total_bytes += int(res.stdout.split()[0])
+                except ValueError:
+                    pass
+    return {"used_bytes": total_bytes, "container_count": container_count}
+
+def run_volume(action, name=None):
+    from pathlib import Path
+    vol_dir = Path("/var/lib/vcontainer/volumes")
+    vol_dir.mkdir(parents=True, exist_ok=True)
+    if action == "list":
+        vols = []
+        if vol_dir.exists():
+            for p in vol_dir.iterdir():
+                if p.is_dir():
+                    vols.append({"name": p.name, "mount_source": str(p)})
+        return vols
+    elif action == "create" and name:
+        p = vol_dir / name
+        p.mkdir(parents=True, exist_ok=True)
+        return {"name": name, "mount_source": str(p)}
+    elif action == "inspect" and name:
+        p = vol_dir / name
+        if not p.exists():
+            raise FileNotFoundError(f"Volume {name} not found")
+        return {"name": name, "mount_source": str(p)}
+    elif action == "remove" and name:
+        p = vol_dir / name
+        if p.exists():
+            import subprocess
+            subprocess.run(["sudo", "-n", "rm", "-rf", str(p)], check=True)
+        return {"status": "removed"}
+    return []
