@@ -109,15 +109,45 @@ function containerCard(c, s) {
   const id = esc(c.id);
   const running = c.status === 'running';
   const hostPort = ((c.ports || [])[0] || '').split(':')[0];
-  const bars = running && s
-    ? miniBar('Memory', s.memory_bytes, s.memory_limit_bytes, bytes) + miniBar('PIDs', s.pids, s.pid_limit, n => n ?? '—')
-    : blankBar('Memory') + blankBar('PIDs');
-  return `<article class="card ccard">
-    <div class="chead"><div><a class="cname" href="#/containers/${enc(c.id)}">${esc(c.name)}</a>
-      <div class="meta"><span class="pill ${esc(c.status)}">${esc(c.status)}</span> <span class="chip">${esc(c.image || '—')}</span></div></div>
-      ${running && hostPort ? `<a class="btn primary" target="_blank" rel="noopener" href="http://localhost:${esc(hostPort)}">Open :${esc(hostPort)} ↗</a>` : ''}</div>
-    ${bars}
-    <div class="cbtns"><button data-act="open" data-id="${id}">Details</button>${toggleBtn(c)}<button class="danger" data-act="delete" data-id="${id}">Delete</button></div></article>`;
+  const mem = s ? s.memory_bytes : null;
+  const memLim = s ? s.memory_limit_bytes : null;
+  const pids = s ? s.pids : null;
+  const pidLim = s ? s.pid_limit : null;
+
+  const p = Math.min(100, ((mem || 0) / (memLim || 1)) * 100).toFixed(0);
+  const pd = Math.min(100, ((pids || 0) / (pidLim || 1)) * 100).toFixed(0);
+  const cpu = c.cpu_pct !== undefined ? c.cpu_pct + '%' : '—';
+
+  return `<article class="card ccard" style="display:flex; flex-direction:column; padding:16px;">
+    <div class="between" style="align-items:flex-start; margin-bottom:4px;">
+      <div style="font-weight:bold; font-size:15px;"><a class="cname" style="color:var(--text);" href="#/containers/${enc(c.id)}">${esc(c.name)}</a></div>
+      <button class="ghost sm" style="padding:4px 8px; border:1px solid var(--line);" data-act="open" data-id="${id}">Details</button>
+    </div>
+    <div class="meta" style="margin-top:0; margin-bottom:16px; font-size:13px;">
+      ${dot(c.status)} <span class="muted" style="margin-left:4px;">${esc(c.image || '—')}</span>
+    </div>
+    <table style="width:100%; font-size:12px; margin-bottom:16px; border:none; background:transparent;">
+      <tr><td class="muted" style="border:none; padding:4px 0; width:70px;">Address</td><td style="border:none; padding:4px 0;">${esc(c.network_address || c.ip || '—')}</td></tr>
+      <tr><td class="muted" style="border:none; padding:4px 0;">Ports</td><td style="border:none; padding:4px 0;">${portOpen(c)}</td></tr>
+      <tr><td class="muted" style="border:none; padding:4px 0;">Command</td><td style="border:none; padding:4px 0; font-family:monospace; white-space:normal; word-break:break-all;">${esc((c.command||[]).join(' ') || '—')}</td></tr>
+    </table>
+    <div style="flex:1;"></div>
+    <div style="font-size:12px; display:flex; justify-content:space-between; margin-bottom:4px;">
+      <span class="muted">Memory</span><span>${running ? bytes(mem)+' / '+(memLim ? bytes(memLim) : 'no limit') : '—'}</span>
+    </div>
+    <div class="bar" style="margin-top:0; margin-bottom:12px; background:var(--raised);"><i style="width:${running ? p : 0}%; background:var(--ok);"></i></div>
+    <div style="font-size:12px; display:flex; justify-content:space-between; margin-bottom:4px;">
+      <span class="muted">Processes</span><span>${running ? (pids||0)+' / '+(pidLim||'no limit') : '—'}</span>
+    </div>
+    <div class="bar" style="margin-top:0; margin-bottom:12px; background:var(--raised);"><i style="width:${running ? pd : 0}%; background:var(--ok);"></i></div>
+    <div style="font-size:12px; display:flex; justify-content:space-between; margin-bottom:4px;">
+      <span class="muted">CPU</span><span>${cpu}</span>
+    </div>
+    <div class="row" style="margin-top:16px; justify-content:flex-end;">
+      ${toggleBtn(c)}
+      <button class="danger" data-act="delete" data-id="${id}">Delete</button>
+    </div>
+  </article>`;
 }
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));

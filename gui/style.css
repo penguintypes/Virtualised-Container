@@ -210,3 +210,13 @@ button[data-act="quick"]:hover{background:var(--b);border-color:var(--b);color:#
 @media(min-width:721px){main{padding-top:10px;padding-bottom:12px}.top{margin-bottom:12px}}
 
 .sys-canvas { width: 100%; height: 40px; margin: 6px 0; }
+
+/* Solid Theme Overrides */
+.cgrid { grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)) !important; }
+.tile { background: var(--panel) !important; border-top: 3px solid var(--c) !important; }
+button.primary, a.btn.primary, nav a.on { background: var(--accent) !important; color: #fff !important; box-shadow: none !important; border-color: var(--accent) !important; }
+.brand { background: none !important; -webkit-background-clip: initial !important; color: var(--accent) !important; }
+.ccard { background: var(--panel) !important; border: 1px solid var(--line) !important; }
+.bar i { background: var(--accent) !important; }
+.bar.warm i { background: var(--warn) !important; }
+.bar.hot i { background: var(--bad) !important; }
