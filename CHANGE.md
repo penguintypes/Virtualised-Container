@@ -74,3 +74,7 @@ The WSL installer, PowerShell/NSIS launchers, verification checklist, no-root un
 - chore: removed duplicated JS/CSS blocks in gui/app.js and gui/style.css
 - chore: removed fix_install.py, fix_dropdown.py, cleanup.py, vcontainer-source-dump.txt, and install.exe
 - chore: ignore vcontainer_source_dump.txt in git
+## 2026-10-29 - change04
+- Merged friend's GUI layout and features into stdlib backend
+- Added /system/disk and /volumes API endpoints using Python 3.14 stdlib
+- Stripped desktop window/pywebview bindings from GUI for clean browser support
