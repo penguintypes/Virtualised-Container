@@ -150,6 +150,17 @@ def inspect(name):
     record = _load().get(name, {"id": name, "name": name})
     pids = data.pop("pids", "").split()
     record.update(status="exited" if data.get("status") == "stopped" else data.get("status", "unknown"), pid=int(pids[0]) if pids else None)
+    try:
+        from pathlib import Path
+        stat_text = Path(f"/sys/fs/cgroup/vcontainer/{name}/cpu.stat").read_text()
+        usec = int([line.split()[1] for line in stat_text.splitlines() if line.startswith("usage_usec")][0])
+        now = time.time()
+        last_now, last_usec = _cpu_cache.get(name, (now - 0.1, usec))
+        _cpu_cache[name] = (now, usec)
+        dt = now - last_now
+        data["cpu_pct"] = round(((usec - last_usec) / 1000000.0) / dt * 100, 1) if dt > 0 else 0.0
+    except Exception:
+        data["cpu_pct"] = 0.0
     return record | data
 
 def containers():

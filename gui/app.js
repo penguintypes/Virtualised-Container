@@ -141,9 +141,14 @@ async function sample() {
   return [s, pct];
 }
 
-function gauge(tone, label, value, sub, pct) {
+const chist = { 'g-cpu': [], 'g-mem': [], 'g-pid': [], 'g-cmem': [] };
+function gauge(tone, label, value, sub, pct, raw) {
+  if (raw !== undefined) {
+    chist[tone].push(raw);
+    if (chist[tone].length > 50) chist[tone].shift();
+  }
   return `<div class="card gauge ${tone}"><div class="between"><span class="muted">${label}</span><span class="gv">${value}</span></div>
-    <div class="bar ${pct != null ? level(pct) : ''}">${pct != null ? `<i style="width:${pct}%"></i>` : ''}</div><div class="muted sub">${sub}</div></div>`;
+    <canvas id="cvs-${tone}" class="sys-canvas" width="200" height="40"></canvas><div class="muted sub">${sub}</div></div>`;
 }
 
 async function drawGauges(ids) {
@@ -159,12 +164,32 @@ async function drawGauges(ids) {
     const used = sys.mem_total - sys.mem_available;
     const memPct = Math.round(used / sys.mem_total * 100);
     const cPct = Math.min(100, Math.round(cmem / sys.mem_total * 100));
-    if (el) el.innerHTML =
-      gauge('g-cpu', 'Host CPU', cpu == null ? '…' : cpu + '%', `${sys.cpus} cores · load ${sys.load[0].toFixed(2)}`, cpu) +
-      gauge('g-mem', 'Host memory', memPct + '%', `${bytes(used)} of ${bytes(sys.mem_total)} used`, memPct) +
-      gauge('g-pid', 'Process IDs', pids, pidCap ? `of ${pidCap} allowed, ${ok.length} running` : `in ${ok.length} running container${ok.length === 1 ? '' : 's'}`,
-        pidCap ? Math.round(pids / pidCap * 100) : null) +
-      gauge('g-cmem', 'Container memory', bytes(cmem), `${cPct}% of host RAM`, cPct);
+    
+    if (el) {
+      el.innerHTML =
+        gauge('g-cpu', 'Host CPU', cpu == null ? '…' : cpu + '%', `${sys.cpus} cores · load ${sys.load[0].toFixed(2)}`, cpu, cpu || 0) +
+        gauge('g-mem', 'Host memory', memPct + '%', `${bytes(used)} of ${bytes(sys.mem_total)} used`, memPct, memPct) +
+        gauge('g-pid', 'Process IDs', pids, pidCap ? `of ${pidCap} allowed, ${ok.length} running` : `in ${ok.length} running container${ok.length === 1 ? '' : 's'}`, pidCap ? Math.round(pids / pidCap * 100) : null, pids) +
+        gauge('g-cmem', 'Container memory', bytes(cmem), `${cPct}% of host RAM`, cPct, cmem);
+        
+      ['g-cpu', 'g-mem', 'g-pid', 'g-cmem'].forEach(id => {
+        let cv = document.getElementById('cvs-' + id);
+        if (!cv) return;
+        let ctx = cv.getContext('2d');
+        let arr = chist[id];
+        let max = id === 'g-cmem' ? sys.mem_total : (id === 'g-pid' ? (pidCap || Math.max(100, pids * 2)) : 100);
+        ctx.beginPath();
+        ctx.strokeStyle = '#D4FF24';
+        ctx.lineWidth = 2;
+        let step = cv.width / 50;
+        for(let i=0; i<arr.length; i++) {
+          let x = i * step;
+          let y = cv.height - (Math.min(1, Math.max(0, arr[i] / (max || 1))) * cv.height);
+          if (i===0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      });
+    }
   } catch (e) {
     wasOffline = true;
     if (el) el.innerHTML = offlineGauges();
@@ -200,7 +225,7 @@ async function home() {
   cpuPrev = null;
   try { await sample(); await sleep(400); } catch (e) {}
   await drawGauges(ids);
-  every(3000, () => drawGauges(ids));
+  every(2000, () => drawGauges(ids));
 }
 
 async function containers() {
