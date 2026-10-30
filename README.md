@@ -10,7 +10,7 @@ bash install.sh
 ```
 
 - **Dashboard:** `http://localhost:8080`
-- **Start:** `./start.sh` launches only the dashboard. Start the demo containers from Quick start on Home (blog on 8081, runner on 8082).
+- **Start:** `./start.sh` launches only the dashboard. Start the demo containers from Quick start on Home (blog on 8081, runner on 8082), or launch the complete BlogDrop web stack via the dashboard button (gateway on 8085).
 - **Install (WSL2 Ubuntu or Linux):** `git clone -b parzivalSr-test https://github.com/penguintypes/Virtualised-Container.git && cd Virtualised-Container && bash install.sh` (the repo is private for now, so cloning needs access).
 - **Windows:** run `install.ps1` in PowerShell; it runs `install.sh` inside WSL Ubuntu. `install.exe` is not in the repo; build it locally with `makensis install.nsi` (NSIS offline installer, bundles the local repository during build). `install.ps1` and `install.exe` are tested on Windows (WSL UNC and `C:\` paths). Defender may quarantine `install.exe`, so the supported path stays `git clone` plus `bash install.sh`.
 
@@ -46,7 +46,7 @@ Containers and images can be managed via the Web Dashboard (`http://localhost:80
 | GET | `/images/{name}/download` | Download an image as a `.tar` |
 | DELETE | `/images/{name}` | Remove an image |
 | GET | `/containers` | List container records (status `running` or `stopped`) |
-| POST | `/containers` | Create/run container: `{"name":"demo","image":"alpine","command":["/bin/sh","-c","..."]}`; optional `memory`, `cpus`, `pids`, `port` |
+| POST | `/containers` | Create/run container: `{"name":"demo","image":"alpine","memory":"250M"}`; `memory` is REQUIRED. Optional arrays: `command`, `volumes`, `env`, `ports`. Optional fields: `cpus`, `pids`, `network`, `ip` |
 | GET | `/containers/{name}` | Container details |
 | POST | `/containers/{name}` | Start a stopped container (its limits are kept) |
 | POST | `/containers/{name}/stop` | Stop a running container |

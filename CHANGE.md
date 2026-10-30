@@ -107,3 +107,9 @@ The WSL installer, PowerShell/NSIS launchers, verification checklist, no-root un
 - fix: Added fflush(stderr) in C engine die() to prevent swallowed error outputs
 - almost05: Added .mailmap to standardize author identity.
 - almost05: Fixed javascript syntax crash in gui/app.js causing dashboard hang.
+- almost06: Reorganized file hierarchy, moved loose script files into `patches/`.
+- almost06: Fixed `backend/api.py` POST payload syntax error blocking server boot.
+- almost06: Fixed `backend/engine.py` "string indices must be integers" by supporting dictionary payload parsing.
+- almost06: Fixed "list object has no attribute items" error by properly parsing env array iterations.
+- almost06: Fixed the Node backend crash by injecting `sh -c "cd /app && npm start"` because engine lacks working directory support.
+- almost06: Resolved Nginx container launch failure by properly naming the `blogdrop-nginx` volume.
