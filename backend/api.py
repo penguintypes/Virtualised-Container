@@ -71,8 +71,8 @@ class VcApiHandler(BaseHTTPRequestHandler):
         try:
             raw_data = self.rfile.read(content_length).decode('utf-8') if content_length > 0 else "{}"
             req_data = json.loads(raw_data) if raw_data.strip() else {}
-        if "env" in req_data and "environment" not in req_data:
-            req_data["environment"] = req_data["env"]
+            if isinstance(req_data, dict) and "env" in req_data and "environment" not in req_data:
+                req_data["environment"] = req_data["env"]
         except Exception:
             req_data = {}
 

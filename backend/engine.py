@@ -147,9 +147,16 @@ def run(name, image, command=None, memory=None, cpus=None, pids=None, port=None,
     if cpus and "/" in str(cpus): args += ["--cpu-max", *str(cpus).split("/", 1)]
     if port: args += ["-p", str(port)]
     if volumes:
-        for v in volumes: args += ["--volume", f"{v['name']}:{v['target']}"]
+        for v in volumes:
+            if isinstance(v, dict):
+                args += ["--volume", f"{v.get('name', '')}:{v.get('target', '')}"]
+            else:
+                args += ["--volume", str(v)]
     if env:
-        for k, v in env.items(): args += ["--env", f"{k}={v}"]
+        if isinstance(env, dict):
+            for k, v in env.items(): args += ["--env", f"{k}={v}"]
+        elif isinstance(env, list):
+            for e in env: args += ["--env", str(e)]
     if network == "bridge" and ip:
         args += ["--network", "bridge", "--ip", str(ip)]
     args += ["--"] + command
