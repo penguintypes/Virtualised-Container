@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = Path("/usr/local/libexec/vcontainer/run_container.sh")
 HELPER = "/usr/local/libexec/vcontainer/build_helper.sh"
 STATE = ROOT / "var" / "engine.json"
+_cpu_cache = {}
 
 def _call(*args, timeout=30):
     if shutil.which("sudo") is None:
@@ -129,7 +130,7 @@ def build(path, clean=False, update=False):
     subprocess.run(["sudo", "-n", HELPER, "write_file", str(core.STORE / name / "meta.json")], input=json.dumps(meta), text=True, check=True, stdout=subprocess.DEVNULL)
     return meta
 
-def run(name, image, command=None, memory=None, cpus=None, pids=None, port=None):
+def run(name, image, command=None, memory=None, cpus=None, pids=None, port=None, volumes=None, env=None, network=None, ip=None):
     core.valid_name(name); meta = core.read_meta(image)
     try: remove(name)
     except Exception: pass
@@ -141,9 +142,15 @@ def run(name, image, command=None, memory=None, cpus=None, pids=None, port=None)
     if pids: args += ["--pids-max", str(pids)]
     if cpus and "/" in str(cpus): args += ["--cpu-max", *str(cpus).split("/", 1)]
     if port: args += ["-p", str(port)]
+    if volumes:
+        for v in volumes: args += ["--volume", f"{v['name']}:{v['target']}"]
+    if env:
+        for k, v in env.items(): args += ["--env", f"{k}={v}"]
+    if network == "bridge" and ip:
+        args += ["--network", "bridge", "--ip", str(ip)]
     args += ["--"] + command
     output = _call(*args, timeout=60)
-    return _record(name, id=name, name=name, image=image, status="running", pid=None, created=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), ports=[port] if port else [], command=command, output=output, memory=memory, cpus=cpus, pids=pids)
+    return _record(name, id=name, name=name, image=image, status="running", pid=None, created=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), ports=[port] if port else [], command=command, output=output, memory=memory, cpus=cpus, pids=pids, volumes=volumes, env=env, network=network, ip=ip)
 
 def inspect(name):
     data = _parse(_call("inspect", name))
@@ -155,32 +162,12 @@ def inspect(name):
         stat_text = Path(f"/sys/fs/cgroup/vcontainer/{name}/cpu.stat").read_text()
         usec = int([line.split()[1] for line in stat_text.splitlines() if line.startswith("usage_usec")][0])
         now = time.time()
-        last_now, last_usec = _cpu_cache.get(name, (now - 0.1, usec))
-        _cpu_cache[name] = (now, usec)
+        last_now, last_usec = _cpu_cache.get(name, (now - 1.0, usec))
         dt = now - last_now
-        data["cpu_pct"] = round(((usec - last_usec) / 1000000.0) / dt * 100, 1) if dt > 0 else 0.0
-    except Exception:
-        data["cpu_pct"] = 0.0
-    try:
-        from pathlib import Path
-        stat_text = Path(f"/sys/fs/cgroup/vcontainer/{name}/cpu.stat").read_text()
-        usec = int([line.split()[1] for line in stat_text.splitlines() if line.startswith("usage_usec")][0])
-        now = time.time()
-        last_now, last_usec = _cpu_cache.get(name, (now - 0.1, usec))
-        _cpu_cache[name] = (now, usec)
-        dt = now - last_now
-        data["cpu_pct"] = round(((usec - last_usec) / 1000000.0) / dt * 100, 1) if dt > 0 else 0.0
-    except Exception:
-        data["cpu_pct"] = 0.0
-    try:
-        from pathlib import Path
-        stat_text = Path(f"/sys/fs/cgroup/vcontainer/{name}/cpu.stat").read_text()
-        usec = int([line.split()[1] for line in stat_text.splitlines() if line.startswith("usage_usec")][0])
-        now = time.time()
-        last_now, last_usec = _cpu_cache.get(name, (now - 0.1, usec))
-        _cpu_cache[name] = (now, usec)
-        dt = now - last_now
-        data["cpu_pct"] = round(((usec - last_usec) / 1000000.0) / dt * 100, 1) if dt > 0 else 0.0
+        if dt >= 1.0:
+            _cpu_cache[name] = (now, usec)
+            _cpu_cache[name + ":pct"] = max(0.0, (usec - last_usec) / 1000000.0 / dt * 100)
+        data["cpu_pct"] = round(_cpu_cache.get(name + ":pct", 0.0), 1)
     except Exception:
         data["cpu_pct"] = 0.0
     return record | data
@@ -278,9 +265,7 @@ def run_volume(action, name=None):
             raise FileNotFoundError(f"Volume {name} not found")
         return {"name": name, "mount_source": str(p)}
     elif action == "remove" and name:
-        p = vol_dir / name
-        if p.exists():
-            import subprocess
-            subprocess.run(["sudo", "-n", "rm", "-rf", str(p)], check=True)
+        core.valid_name(name)
+        _call("volume", "remove", name)
         return {"status": "removed"}
     return []
