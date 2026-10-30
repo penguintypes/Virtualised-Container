@@ -61,6 +61,7 @@ class VcApiHandler(BaseHTTPRequestHandler):
         except FileNotFoundError as e:
             self.fail_out(e, "not_found", 404)
         except Exception as e:
+            import traceback; traceback.print_exc()
             self.fail_out(e)
 
     def do_POST(self):
@@ -70,6 +71,8 @@ class VcApiHandler(BaseHTTPRequestHandler):
         try:
             raw_data = self.rfile.read(content_length).decode('utf-8') if content_length > 0 else "{}"
             req_data = json.loads(raw_data) if raw_data.strip() else {}
+        if "env" in req_data and "environment" not in req_data:
+            req_data["environment"] = req_data["env"]
         except Exception:
             req_data = {}
 
@@ -164,6 +167,7 @@ class VcApiHandler(BaseHTTPRequestHandler):
 
             return self.fail_out("not found", "not_found", 404)
         except Exception as e:
+            import traceback; traceback.print_exc()
             self.fail_out(e)
 
     def do_GET(self):
@@ -285,6 +289,7 @@ class VcApiHandler(BaseHTTPRequestHandler):
 
             return self.fail_out("not found", "not_found", 404)
         except Exception as e:
+            import traceback; traceback.print_exc()
             self.fail_out(e)
 
     def serve_gui(self, filename, mime_type=None):
