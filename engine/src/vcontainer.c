@@ -53,6 +53,7 @@
 #define STACK_SIZE (1024 * 1024)
 #define MAX_SECCOMP_DENIES 32
 #define MAX_VOLUMES 16
+#define MAX_ENVIRONMENT 128
 
 /* rootfs - Image which will bootup the isloated offspring
  * hostname - Name of the child
@@ -90,6 +91,9 @@ struct config {
     struct container_volume volumes[MAX_VOLUMES];
     size_t volume_count;
 
+    const char *environment[MAX_ENVIRONMENT];
+    size_t environment_count;
+
     int log_fd;
 
     const char *container_name;
@@ -109,6 +113,20 @@ static void usage(const char *program)
         "[--cpu-max QUOTA PERIOD] [--volume SOURCE:TARGET] "
         "[--network bridge --ip ADDRESS] -- COMMAND [ARGS...]\n",
             program);
+}
+
+#include <ctype.h>
+static bool valid_environment_assignment(const char *assignment)
+{
+    const char *equals = assignment == NULL ? NULL : strchr(assignment, '=');
+    if (equals == NULL || equals == assignment || strlen(equals + 1) > 8192) return false;
+    unsigned char first = (unsigned char)assignment[0];
+    if (first != '_' && !isalpha(first)) return false;
+    for (const char *cursor = assignment + 1; cursor < equals; ++cursor) {
+        unsigned char character = (unsigned char)*cursor;
+        if (character != '_' && !isalnum(character)) return false;
+    }
+    return true;
 }
 
 static int mkdir_if_missing(const char *path, mode_t mode)
@@ -183,9 +201,45 @@ static int set_up_rootfs(const char *rootfs, const char *container_name,
     }
 
     if (mount("tmpfs", "/dev", "tmpfs",
-              MS_NOSUID | MS_NODEV, "mode=755") != 0) {
+              MS_NOSUID | MS_NOEXEC, "mode=755") != 0) {
         die("mount /dev");
         return -1;
+    }
+
+    const char *devices[] = { "null", "zero", "full", "random", "urandom", "tty" };
+    for (size_t i = 0; i < sizeof(devices) / sizeof(devices[0]); ++i) {
+        char source[64]; char target[64];
+        if (snprintf(source, sizeof(source), "/.oldroot/dev/%s", devices[i]) >= (int)sizeof(source) ||
+            snprintf(target, sizeof(target), "/dev/%s", devices[i]) >= (int)sizeof(target)) {
+            errno = ENAMETOOLONG; return -1;
+        }
+        int device_fd = open(target, O_WRONLY | O_CREAT | O_CLOEXEC, 0666);
+        if (device_fd < 0 || close(device_fd) != 0 || chmod(target, 0666) != 0 ||
+            mount(source, target, NULL, MS_BIND, NULL) != 0) {
+            if (device_fd >= 0) close(device_fd);
+            die("mount standard device"); return -1;
+        }
+    }
+    if (mkdir_if_missing("/dev/pts", 0755) != 0 ||
+        mount("devpts", "/dev/pts", "devpts", MS_NOSUID | MS_NOEXEC, "newinstance,ptmxmode=0666,mode=0620,gid=0") != 0) {
+        die("mount /dev/pts"); return -1;
+    }
+    if (mkdir_if_missing("/dev/shm", 01777) != 0 ||
+        mount("tmpfs", "/dev/shm", "tmpfs", MS_NOSUID | MS_NODEV, "mode=1777") != 0) {
+        die("mount /dev/shm"); return -1;
+    }
+    if (mkdir_if_missing("/dev/mqueue", 0755) != 0 ||
+        mount("mqueue", "/dev/mqueue", "mqueue", MS_NOSUID | MS_NOEXEC | MS_NODEV, NULL) != 0) {
+        die("mount /dev/mqueue"); return -1;
+    }
+    const struct { const char *target; const char *linkpath; } descriptor_links[] = {
+        { "/proc/self/fd", "/dev/fd" }, { "/proc/self/fd/0", "/dev/stdin" }, { "/proc/self/fd/1", "/dev/stdout" },
+        { "/proc/self/fd/2", "/dev/stderr" }, { "pts/ptmx", "/dev/ptmx" },
+    };
+    for (size_t i = 0; i < sizeof(descriptor_links) / sizeof(descriptor_links[0]); ++i) {
+        if (symlink(descriptor_links[i].target, descriptor_links[i].linkpath) != 0) {
+            die("create standard device link"); return -1;
+        }
     }
 
     if (umount2("/.oldroot", MNT_DETACH) != 0 || rmdir("/.oldroot") != 0) {
@@ -249,6 +303,16 @@ static int child_main(void *argument)
     if (config->detach && setsid() == -1) {
         die("detach session");
         _exit(127);
+    }
+
+    for (size_t i = 0; i < config->environment_count; ++i) {
+        char *assignment = strdup(config->environment[i]);
+        if (assignment == NULL) _exit(127);
+        char *equals = strchr(assignment, '=');
+        if (equals == NULL) { free(assignment); errno = EINVAL; _exit(127); }
+        *equals = '\0';
+        if (setenv(assignment, equals + 1, 1) != 0) { free(assignment); _exit(127); }
+        free(assignment);
     }
 
     execvp(config->command[0], config->command);
@@ -360,6 +424,8 @@ int main(int argc, char **argv)
     const char *network_ip = NULL;
     struct container_volume volumes[MAX_VOLUMES] = { 0 };
     size_t volume_count = 0;
+    const char *environment[MAX_ENVIRONMENT] = { 0 };
+    size_t environment_count = 0;
     int index = 1;
 
     const char *cgroup_id = NULL;
@@ -421,6 +487,14 @@ int main(int argc, char **argv)
             }
 
             seccomp_denies[seccomp_deny_count++] = argv[index + 1];
+            index += 2;
+        }
+        else if ((strcmp(argv[index], "--env") == 0 || strcmp(argv[index], "-e") == 0) && index + 1 < argc) {
+            if (environment_count == MAX_ENVIRONMENT || !valid_environment_assignment(argv[index + 1])) {
+                fprintf(stderr, "vcontainer: --env requires a valid NAME=VALUE\n");
+                return EXIT_FAILURE;
+            }
+            environment[environment_count++] = argv[index + 1];
             index += 2;
         }
         else if (strcmp(argv[index], "--volume") == 0 && index + 1 < argc) {
@@ -619,6 +693,7 @@ int main(int argc, char **argv)
         .seccomp_deny_count = seccomp_deny_count,
         .seccomp_denies = { 0 },
         .volume_count = volume_count,
+        .environment_count = environment_count,
         .log_fd = log_fd,
         .container_name = cgroup_id,
         .exec_fd = exec_pipe[1],
@@ -631,6 +706,9 @@ int main(int argc, char **argv)
     }
     for (size_t i = 0; i < volume_count; ++i) {
         config.volumes[i] = volumes[i];
+    }
+    for (size_t i = 0; i < environment_count; ++i) {
+        config.environment[i] = environment[i];
     }
 
     int flags = namespace_clone_flags(use_userns, true) | SIGCHLD;
