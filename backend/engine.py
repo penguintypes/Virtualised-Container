@@ -40,7 +40,7 @@ def _parse(text):
     for line in text.splitlines():
         key, sep, value = line.partition("=")
         if sep:
-            data[key] = value.strip()
+            data[key.strip()] = value.strip()
     return data
 
 def _record(container, **changes):
@@ -135,8 +135,12 @@ def run(name, image, command=None, memory=None, cpus=None, pids=None, port=None,
     try: remove(name)
     except Exception: pass
     import shlex
+    import shlex
     if isinstance(command, str): command = shlex.split(command)
-    command = command or meta.get("cmd") or ["/bin/sh"]
+    if command is None:
+        command = meta.get("cmd")
+    if not command:
+        command = ["/bin/sh"]
     args = ["run", image, "--name", name, "--detach"]
     if memory: args += ["--memory-max", str(memory)]
     if pids: args += ["--pids-max", str(pids)]
@@ -176,7 +180,7 @@ def containers():
     return [inspect(name) for name in sorted(_load())]
 
 def stop(name):
-    result = _record(name, status="exited")
+    result = _record(name, status="exited", output="")
     _call("stop", name)
     return result
 
@@ -245,25 +249,16 @@ def get_disk_usage():
     return {"used_bytes": total_bytes, "container_count": container_count}
 
 def run_volume(action, name=None):
-    from pathlib import Path
-    vol_dir = Path("/var/lib/vcontainer/volumes")
-    vol_dir.mkdir(parents=True, exist_ok=True)
     if action == "list":
-        vols = []
-        if vol_dir.exists():
-            for p in vol_dir.iterdir():
-                if p.is_dir():
-                    vols.append({"name": p.name, "mount_source": str(p)})
-        return vols
+        out = _call("volume", "list")
+        return [{"name": n, "mount_source": f"/var/lib/vcontainer/volumes/{n}/_data"} for n in out.splitlines() if n]
     elif action == "create" and name:
-        p = vol_dir / name
-        p.mkdir(parents=True, exist_ok=True)
-        return {"name": name, "mount_source": str(p)}
+        core.valid_name(name)
+        _call("volume", "create", name)
+        return {"name": name, "mount_source": f"/var/lib/vcontainer/volumes/{name}/_data"}
     elif action == "inspect" and name:
-        p = vol_dir / name
-        if not p.exists():
-            raise FileNotFoundError(f"Volume {name} not found")
-        return {"name": name, "mount_source": str(p)}
+        core.valid_name(name)
+        return _parse(_call("volume", "inspect", name))
     elif action == "remove" and name:
         core.valid_name(name)
         _call("volume", "remove", name)
