@@ -438,7 +438,7 @@ setInterval(liveTick, 1000);
 
 const QUICK = [["blog", "8081:8081"], ["runner", "8082:8082"]];
 function quickStartHtml() {
-  return `<div class="card"><b>Quick start</b> ${QUICK.map(([n, p]) => `<button data-action="quick" data-img="${n}" data-port="${p}">Run ${n}</button>`).join(" ")}</div>`;
+  return `<div class="card"><b>Quick start</b> ${QUICK.map(([n, p]) => `<button data-action="quick" data-img="${n}" data-port="${p}">Run ${n}</button>`).join(" ")} <button id="launch-blogdrop" onclick="launchBlogDrop()">Launch BlogDrop</button></div>`;
 }
 
 async function updateHealth() {
@@ -880,7 +880,7 @@ try {
 setTheme(initialTheme);
 
 
-async function launchBlogDrop() {
+window.launchBlogDrop = async function() {
   const btn = document.getElementById("launch-blogdrop");
   if(!btn) return;
   btn.disabled = true; btn.textContent = "Launching...";

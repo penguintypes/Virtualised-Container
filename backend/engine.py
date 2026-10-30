@@ -140,7 +140,7 @@ def run(name, image, command=None, memory=None, cpus=None, pids=None, port=None,
     if command is None:
         command = meta.get("cmd")
     if not command:
-        command = ["/bin/sh"]
+        command = {"mysql": ["docker-entrypoint.sh", "mysqld"], "nginx": ["nginx", "-g", "daemon off;"], "node": ["node"]}.get(image, ["/bin/sh"])
     args = ["run", image, "--name", name, "--detach"]
     if memory: args += ["--memory-max", str(memory)]
     if pids: args += ["--pids-max", str(pids)]
