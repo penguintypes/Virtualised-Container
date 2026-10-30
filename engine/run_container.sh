@@ -196,6 +196,17 @@ case "$action" in
                     resolved_args+=("--name" "$2")
                     shift 2
                     ;;
+                --network)
+                    [ "$#" -ge 2 ] || exit 2
+                    resolved_args+=("--network" "$2")
+                    shift 2
+                    ;;
+                --ip)
+                    [ "$#" -ge 2 ] || exit 2
+                    container_ip="$2"
+                    resolved_args+=("--ip" "$2")
+                    shift 2
+                    ;;
                 --volume)
                     [ "$#" -ge 2 ] || {
                         echo "--volume requires NAME:TARGET" >&2
