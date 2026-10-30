@@ -97,6 +97,7 @@ class VcApiHandler(BaseHTTPRequestHandler):
                 if isinstance(c_port, dict):
                     c_port = "%s:%s" % (c_port["host_port"], c_port["container_port"])
 
+                if not req_data.get('memory'): return self.respond_with_json(400, {'error': 'memory is required'})
                 res = engine.run(
                     c_name, req_data["image"], req_data.get("command"),
                     req_data.get("memory"), req_data.get("cpus"), req_data.get("pids"), c_port,
@@ -315,6 +316,21 @@ def main():
     bind_port = int(os.getenv("VCONTAINER_PORT", "8080"))
     # finally start the server
     ThreadingHTTPServer((bind_host, bind_port), VcApiHandler).serve_forever()
+
+
+try:
+    import os, json
+    if os.path.exists('var/engine.json'):
+        with open('var/engine.json', 'r+') as f:
+            db = json.load(f)
+            changed = False
+            for n, c in db.get('containers', {}).items():
+                if c.get('status') == 'running' and not os.path.exists(f'/sys/fs/cgroup/vcontainer/{n}'):
+                    c['status'] = 'stopped'
+                    changed = True
+            if changed:
+                f.seek(0); f.truncate(); json.dump(db, f)
+except Exception: pass
 
 if __name__ == "__main__":
     main()
