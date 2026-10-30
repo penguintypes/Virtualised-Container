@@ -134,14 +134,15 @@ function portLinks(container) {
   if (!container.ports?.length) return "—";
   return container.ports
     .map((mapping) => {
-      const label = `${mapping.host_port}:${mapping.container_port}`;
-      return `<a target="_blank" rel="noopener" href="http://127.0.0.1:${mapping.host_port}">${esc(label)} ↗</a>`;
+      const [hp, cp] = typeof mapping === "string" ? mapping.split(":") : [mapping.host_port, mapping.container_port];
+      const label = `${hp}:${cp}`;
+      return `<a target="_blank" rel="noopener" href="http://127.0.0.1:${hp}">${esc(label)} ↗</a>`;
     })
     .join(", ");
 }
 
 async function getContainers() {
-  return (await api("/containers")).containers || [];
+  return asList(await api("/containers"), "containers");
 }
 
 function ratio(value, limit) {
@@ -169,7 +170,7 @@ function containerCard(container, metrics = null) {
     <div class="space-between-row"><div><h3>${name}</h3><div class="container-metadata">${status(container.status)} <span class="image-badge">${esc(container.image || "—")}</span></div></div>
       <button data-action="details" data-name="${name}">Details</button></div>
     <dl class="container-configuration">
-      <dt>Address</dt><dd>${esc(container.network_address || "—")}</dd>
+      ${container.network_address ? `<dt>Address</dt><dd>${esc(container.network_address)}</dd>` : ""}
       <dt>Ports</dt><dd>${portLinks(container)}</dd>
       <dt>Command</dt><dd><code>${esc((container.command || []).join(" ") || "—")}</code></dd>
     </dl>
@@ -233,7 +234,7 @@ async function renderHome() {
   $("#content").innerHTML = `<div class="container-summary">
       <article class="card"><span>Running</span><strong>${running}</strong></article>
       <article class="card"><span>Stopped</span><strong>${containers.length - running}</strong></article>
-      <article class="card"><span>Images</span><strong>${(images.images || []).length}</strong></article>
+      <article class="card"><span>Images</span><strong>${asList(images, "images").length}</strong></article>
       <article class="card"><span>Disk utillization</span><strong>${disk ? bytes(disk.used_bytes) : "—"}</strong><small>${disk ? `Writable layers, metadata and logs · ${disk.container_count} containers` : "Disk usage unavailable"}</small></article>
     </div>
     <div class="resource-statistics">
@@ -264,19 +265,23 @@ async function renderContainers() {
     `<div class="container-grid">${containers.length ? containers.map((container) => containerCard(container, metrics[container.name])).join("") : '<div class="empty-state">No containers yet.</div>'}</div>`;
 }
 
+function asList(r, key) {
+  return Array.isArray(r) ? r : (r && r[key]) || [];
+}
+
 async function renderImages() {
-  const images = (await api("/images")).images || [];
+  const images = asList(await api("/images"), "images");
   $("#title").textContent = "Images";
   $("#actions").innerHTML =
     '<button class="default" data-action="pull">Pull image</button>';
   $("#content").innerHTML = images.length
     ? `<div class="card image-table-container"><table>
-    <thead><tr><th>Name</th><th>Root filesystem</th><th></th></tr></thead>
+    <thead><tr><th>Name</th><th>Size</th><th></th></tr></thead>
     <tbody>${images
       .map(
         (
           image,
-        ) => `<tr><td data-label="Name"><b class="image-name">${esc(image.name)}</b></td><td data-label="Root filesystem"><code>${esc(image.rootfs)}</code></td>
+        ) => `<tr><td data-label="Name"><b class="image-name">${esc(image.name)}</b></td><td data-label="Size">${image.size ? (image.size / 1048576).toFixed(1) + " MB" : ""}</td>
       <td><button class="danger" data-action="delete-image" data-name="${esc(image.name)}">Delete</button></td></tr>`,
       )
       .join("")}</tbody>
@@ -285,7 +290,7 @@ async function renderImages() {
 }
 
 async function renderVolumes() {
-  const volumes = (await api("/volumes")).volumes || [];
+  const volumes = asList(await api("/volumes"), "volumes");
   $("#title").textContent = "Volumes";
   $("#actions").innerHTML =
     '<button class="default" data-action="create-volume">+ Create volume</button>';
@@ -368,7 +373,90 @@ async function loadVolumeDetails(name, request) {
   </div>`;
 }
 
+const liveHist = { cpu: [], ram: [] };
+let liveLast = null;
+
+function liveHtml() {
+  return `<div class="live-row"><div class="card"><div class="space-between-row"><b>CPU usage</b><span id="live-cpu-val">—</span></div><canvas id="live-cpu"></canvas></div><div class="card"><div class="space-between-row"><b>RAM usage</b><span id="live-ram-val">—</span></div><canvas id="live-ram"></canvas></div></div>`;
+}
+
+function drawSpark(id, data, max, color) {
+  const c = document.getElementById(id);
+  if (!c) return;
+  const w = (c.width = c.clientWidth || 300);
+  const h = (c.height = 70);
+  const g = c.getContext("2d");
+  g.clearRect(0, 0, w, h);
+  g.strokeStyle = "rgba(127,127,127,0.35)";
+  g.strokeRect(0.5, 0.5, w - 1, h - 1);
+  if (data.length < 2) return;
+  const step = w / 59;
+  const pts = data.map((v, i) => [
+    w - (data.length - 1 - i) * step,
+    h - 4 - (Math.min(max, Math.max(0, v)) / max) * (h - 8),
+  ]);
+  g.beginPath();
+  pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+  g.strokeStyle = color;
+  g.lineWidth = 2;
+  g.stroke();
+  g.lineTo(pts[pts.length - 1][0], h);
+  g.lineTo(pts[0][0], h);
+  g.closePath();
+  g.globalAlpha = 0.18;
+  g.fillStyle = color;
+  g.fill();
+  g.globalAlpha = 1;
+}
+
+function drawLive() {
+  drawSpark("live-cpu", liveHist.cpu, Math.max(10, ...liveHist.cpu), "#3a7bd5");
+  drawSpark("live-ram", liveHist.ram, 100, "#2e9e5b");
+  if (!liveLast) return;
+  const d = liveLast;
+  const cv = $("#live-cpu-val");
+  const rv = $("#live-ram-val");
+  if (cv) cv.textContent = `host ${d.host_cpu_percent}% · containers ${d.container_cpu_percent}%`;
+  if (rv) rv.textContent = `${bytes(d.host_memory_used_bytes)} / ${bytes(d.host_memory_total_bytes)} · containers ${bytes(d.container_memory_bytes)}`;
+}
+
+async function liveTick() {
+  if (document.hidden || activeView !== "home") return;
+  try {
+    const r = await fetch("/system/live");
+    if (!r.ok) return;
+    const d = await r.json();
+    liveLast = d;
+    liveHist.cpu.push(d.host_cpu_percent);
+    liveHist.ram.push((d.host_memory_used_bytes / (d.host_memory_total_bytes || 1)) * 100);
+    if (liveHist.cpu.length > 60) liveHist.cpu.shift();
+    if (liveHist.ram.length > 60) liveHist.ram.shift();
+    drawLive();
+  } catch (_) {}
+}
+setInterval(liveTick, 1000);
+
+const QUICK = [["blog", "8081:8081"], ["runner", "8082:8082"]];
+function quickStartHtml() {
+  return `<div class="card"><b>Quick start</b> ${QUICK.map(([n, p]) => `<button data-action="quick" data-img="${n}" data-port="${p}">Run ${n}</button>`).join(" ")}</div>`;
+}
+
+async function updateHealth() {
+  try {
+    const h = await api("/health");
+    const caps = h.capabilities || {};
+    $("#health").innerHTML =
+      '<span class="dot on"></span>vcontainer: online<br>' +
+      [["namespaces", "namespaces"], ["cgroups_v2", "cgroups v2"], ["overlayfs", "overlayfs"], ["network_tools", "network"]]
+        .map(([k, l]) => (caps[k] ? '<span class="ok">✓</span>' : '<span class="bad">✗</span>') + l)
+        .join("<br>");
+  } catch (_) {
+    $("#health").innerHTML = '<span class="dot off"></span>vcontainer: offline';
+  }
+}
+
 async function render() {
+  updateHealth();
   clearTimeout(refreshTimer);
   document.querySelectorAll("[data-view]").forEach((button) => {
     button.classList.toggle("active", button.dataset.view === activeView);
@@ -377,10 +465,18 @@ async function render() {
     if (activeView === "images") await renderImages();
     else if (activeView === "volumes") await renderVolumes();
     else if (activeView === "containers") await renderContainers();
-    else await renderHome();
+    else {
+      await renderHome();
+      $("#content").insertAdjacentHTML("afterbegin", quickStartHtml());
+      const statsRow = document.querySelector(".resource-statistics");
+      if (statsRow) statsRow.insertAdjacentHTML("afterend", liveHtml());
+      else $("#content").insertAdjacentHTML("beforeend", liveHtml());
+      drawLive();
+    }
     $("#banner").classList.add("is-hidden");
   } catch (error) {
-    $("#banner").textContent = `Backend unavailable: ${error.message}`;
+    console.error("Dashboard render failed:", error);
+    $("#banner").textContent = `Dashboard error: ${error.message}`;
     $("#banner").classList.remove("is-hidden");
   }
   if (activeView === "home" || activeView === "containers") {
@@ -393,7 +489,7 @@ async function openRunDialog() {
     api("/images"),
     api("/volumes"),
   ]);
-  const images = imageData.images || [];
+  const images = asList(imageData, "images");
   const volumes = volumeData.volumes || [];
   $("#image").innerHTML = images
     .map(
@@ -493,10 +589,10 @@ async function loadDetails(name, request) {
   $("#detail-content").innerHTML =
     `<div class="detail-grid"><div class="card"><h3>Configuration</h3><dl>
       <dt>Status</dt><dd>${status(container.status)}</dd><dt>Image</dt><dd>${esc(container.image || "—")}</dd>
-      <dt>Created</dt><dd>${esc(container.created_at || "—")}</dd><dt>Started</dt><dd>${esc(container.started_at || "—")}</dd>
+      <dt>Created</dt><dd>${esc(container.created_at || container.created || "—")}</dd><dt>Started</dt><dd>${esc(container.started_at || "—")}</dd>
       <dt>Stopped</dt><dd>${esc(container.stopped_at || "—")}</dd><dt>Exit code</dt><dd>${esc(container.exit_code ?? "—")}</dd>
       <dt>Address</dt><dd>${esc(container.network_address || "—")}</dd><dt>Ports</dt><dd>${portLinks(container)}</dd>
-    </dl></div><div class="card"><div class="space-between-row"><h3>Resources</h3>${container.status === "stopped" ? `<button data-action="resources" data-name="${esc(name)}" data-memory="${esc(container.resource_limits?.memory_max || "250M")}" data-pids="${esc(container.resource_limits?.pids_max || "64")}" data-cpu="${esc(container.resource_limits?.cpu_max || "50000 100000")}">Edit resources</button>` : '<small class="muted-text">Stop to edit</small>'}</div><dl>
+    </dl></div><div class="card"><div class="space-between-row"><h3>Resources</h3>${container.status !== "running" ? `<button data-action="resources" data-name="${esc(name)}" data-memory="${esc(container.resource_limits?.memory_max || "250M")}" data-pids="${esc(container.resource_limits?.pids_max || "64")}" data-cpu="${esc(container.resource_limits?.cpu_max || "50000 100000")}">Edit resources</button>` : '<small class="muted-text">Stop to edit</small>'}</div><dl>
       <dt>Configured limit</dt><dd>${esc(container.resource_limits?.memory_max || "—")}</dd>
       <dt>Memory</dt><dd>${metrics ? `${bytes(metrics.memory_used_bytes)} / ${bytes(metrics.memory_limit_bytes)}` : "—"}</dd>
       <dt>CPU</dt><dd>${esc(metrics?.cpu_percent ?? "—")}%</dd><dt>Processes</dt><dd>${esc(metrics?.process_count ?? "—")}</dd>
@@ -575,7 +671,30 @@ document.addEventListener("click", async (event) => {
       confirm(`Delete image ${name}?`)
     )
       await api(`/images/${encode(name)}`, { method: "DELETE" });
-    else if (button.dataset.action === "pull") {
+    else if (button.dataset.action === "quick") {
+      const cp = button.dataset.port.split(":")[1];
+      const existing = await (await fetch("/containers")).json();
+      const used = new Set(
+        (Array.isArray(existing) ? existing : existing.containers || []).flatMap((c) =>
+          (c.ports || []).map((m) =>
+            String(typeof m === "string" ? m.split(":")[0] : m.host_port),
+          ),
+        ),
+      );
+      let hp = 8081;
+      while (used.has(String(hp))) hp++;
+      const r = await fetch("/containers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          image: button.dataset.img,
+          name: button.dataset.img + "-" + Math.random().toString(36).slice(2, 6),
+          ports: [{ host_port: hp, container_port: cp }],
+        }),
+      });
+      if (!r.ok) throw new Error((await r.json()).error || "start failed");
+      toast("Started " + button.dataset.img + " on port " + hp);
+    } else if (button.dataset.action === "pull") {
       openPullImageDialog();
       return;
     } else if (button.dataset.action === "create-volume") {
@@ -632,8 +751,8 @@ pullImageForm.addEventListener("submit", async (event) => {
     errorMessage.classList.remove("is-hidden");
     return;
   }
-  const restoreButton = setButtonLoading(button, "Pulling image…");
   errorMessage.classList.add("is-hidden");
+  const restoreButton = setButtonLoading(button, "Pulling image…");
   const closeButtons = document.querySelectorAll('[data-close="pull-image"]');
   closeButtons.forEach((control) => {
     control.disabled = true;
@@ -729,7 +848,7 @@ $("#resource-form").addEventListener("submit", async (event) => {
 });
 api("/health")
   .then((health) => {
-    $("#health").textContent = `● ${health.service}: ${health.status}`;
+    updateHealth();
     render();
   })
   .catch((error) => {
