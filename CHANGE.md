@@ -78,3 +78,15 @@ The WSL installer, PowerShell/NSIS launchers, verification checklist, no-root un
 - Merged friend's GUI layout and features into stdlib backend
 - Added /system/disk and /volumes API endpoints using Python 3.14 stdlib
 - Stripped desktop window/pywebview bindings from GUI for clean browser support
+
+## 2026-10-29 - change05
+- fix: removed duplicate setTheme() declaration in gui/app.js; verified JavaScript syntax with node --check gui/app.js (exit code 0).
+
+## 2026-10-29 - change06
+- fix: restored dashboard render error visibility and added console diagnostics to investigate the blank screen.
+
+## 2026-10-29 - change07
+- fix: removed the obsolete pywebview window/title-bar shell from gui/index.html; visually verified the dashboard renders correctly in the browser.
+- 2026-10-29 19:12 fix: remove obsolete window shell from index.html, restore render error diagnostics, validate volume name before removal, clean whitespace
+- 2026-10-30 12:19 fix: repair backend run_volume to use engine script for safe deletion
+- 2026-10-30 12:19 feat: patch C engine to support --env and create standard /dev nodes
