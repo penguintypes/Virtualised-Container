@@ -147,7 +147,11 @@ class VcApiHandler(BaseHTTPRequestHandler):
                     memory=obj.get("memory"),
                     cpus=obj.get("cpus"),
                     pids=obj.get("pids"),
-                    port=old_port
+                    port=old_port,
+                    volumes=obj.get("volumes"),
+                    env=obj.get("env"),
+                    network=obj.get("network"),
+                    ip=obj.get("ip")
                 ))
 
             if url_chunks[2] == "stop":
