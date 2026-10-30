@@ -105,3 +105,5 @@ The WSL installer, PowerShell/NSIS launchers, verification checklist, no-root un
 - fix: Engine stop path retries rmdir up to 50 times to bypass cgroup kernel locks
 - fix: Cleaned up stop/inspect response parsing to strip trailing whitespace keys
 - fix: Added fflush(stderr) in C engine die() to prevent swallowed error outputs
+- almost05: Added .mailmap to standardize author identity.
+- almost05: Fixed javascript syntax crash in gui/app.js causing dashboard hang.
