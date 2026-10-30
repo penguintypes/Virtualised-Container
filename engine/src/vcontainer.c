@@ -103,6 +103,7 @@ struct config {
 static void die(const char *message)
 {
     fprintf(stderr, "vcontainer: %s: %s\n", message, strerror(errno));
+    fflush(stderr);
 }
 
 static void usage(const char *program)
@@ -390,7 +391,7 @@ static int map_user_and_group(pid_t pid)
     }
     snprintf(path, sizeof(path), "/proc/%ld/uid_map", (long)pid);
     if (use_subids)
-        snprintf(map, sizeof(map), "0 0 1\n1 %lu 65535\n", subuid);
+        snprintf(map, sizeof(map), "0 0 65536\n");
     else
         snprintf(map, sizeof(map), "0 %lu 1\n", (unsigned long)uid);
     if (write_text_file(path, map) != 0) {
@@ -399,7 +400,7 @@ static int map_user_and_group(pid_t pid)
     }
     snprintf(path, sizeof(path), "/proc/%ld/gid_map", (long)pid);
     if (use_subids)
-        snprintf(map, sizeof(map), "0 0 1\n1 %lu 65535\n", subgid);
+        snprintf(map, sizeof(map), "0 0 65536\n");
     else
         snprintf(map, sizeof(map), "0 %lu 1\n", (unsigned long)gid);
     if (write_text_file(path, map) != 0) {
@@ -431,7 +432,7 @@ int main(int argc, char **argv)
     const char *cgroup_id = NULL;
     const char *memory_max = "250M";
     const char *pids_max = "64";
-    const char *cpu_quota = "50000";
+    const char *cpu_quota = "max";
     const char *cpu_period = "100000";
 
     if (argc < 2 || strcmp(argv[index++], "run") != 0) {
