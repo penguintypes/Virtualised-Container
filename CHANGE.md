@@ -90,3 +90,18 @@ The WSL installer, PowerShell/NSIS launchers, verification checklist, no-root un
 - 2026-10-29 19:12 fix: remove obsolete window shell from index.html, restore render error diagnostics, validate volume name before removal, clean whitespace
 - 2026-10-30 12:19 fix: repair backend run_volume to use engine script for safe deletion
 - 2026-10-30 12:19 feat: patch C engine to support --env and create standard /dev nodes
+
+## 2026-10-31 - change08
+- feat: Added live graphs, compact cards, and Details routes to dashboard GUI
+- feat: Added /images/pull and /system/live API routes for dashboard metrics
+- feat: API POST /containers now requires a `memory` parameter to prevent host OOM
+- feat: Added "Launch BlogDrop" quick-action to dashboard to spin up standard stack
+- feat: Added default command fallbacks for mysql, nginx, and node images in engine
+- fix: API automatically marks missing/ghost containers as stopped on boot
+- fix: Start-handler preserves volumes, env, network, and IP across restarts
+- fix: Preserved explicit --ip arguments when -p (ports) are passed
+- fix: Changed engine default cpu_quota to "max" (unlimited) and fixed CPU % cache
+- fix: Corrected userns map to cover root and standard user identities correctly
+- fix: Engine stop path retries rmdir up to 50 times to bypass cgroup kernel locks
+- fix: Cleaned up stop/inspect response parsing to strip trailing whitespace keys
+- fix: Added fflush(stderr) in C engine die() to prevent swallowed error outputs
