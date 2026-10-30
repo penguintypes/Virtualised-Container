@@ -688,6 +688,7 @@ document.addEventListener("click", async (event) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           image: button.dataset.img,
+          memory: "250M",
           name: button.dataset.img + "-" + Math.random().toString(36).slice(2, 6),
           ports: [{ host_port: hp, container_port: cp }],
         }),
@@ -884,8 +885,20 @@ window.launchBlogDrop = async function() {
   const btn = document.getElementById("launch-blogdrop");
   if(!btn) return;
   btn.disabled = true; btn.textContent = "Launching...";
+  const doReq = async (p) => {
+    const r = await fetch("/containers", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(p) });
+    if (!r.ok) throw new Error((await r.json()).error || "Failed");
+  };
   try {
-    await api("/containers", { method: "POST", body: { name: "blogdrop-db", image: "mysql", command: ["docker-entrypoint.sh", "mysqld"], memory: "1G", pids: 256, ip: "10.88.0.30", env: ["MYSQL_ROOT_PASSWORD=change-root-password", "MYSQL_DATABASE=blogdrop_db", "MYSQL_USER=blogdrop", "MYSQL_PASSWORD=change-database-password"], volumes: ["blogdrop-db:/var/lib/mysql", "blogdrop-db-init:/docker-entrypoint-initdb.d"], network: "bridge" }});
+    await doReq({ name: "blogdrop-db", image: "mysql", command: ["docker-entrypoint.sh", "mysqld"], memory: "1G", pids: 256, ip: "10.88.0.30", env: ["MYSQL_ROOT_PASSWORD=change-root-password", "MYSQL_DATABASE=blogdrop_db", "MYSQL_USER=blogdrop", "MYSQL_PASSWORD=change-database-password"], volumes: ["blogdrop-db:/var/lib/mysql", "blogdrop-db-init:/docker-entrypoint-initdb.d"], network: "bridge" });
+    await new Promise(r => setTimeout(r, 2000));
+    await doReq({ name: "blogdrop-backend", image: "node", command: ["/bin/sh", "-c", "test -d /app/node_modules || npm --prefix /app install --omit=dev; exec node /app/server.js"], memory: "512M", pids: 128, ip: "10.88.0.31", env: ["PORT=3000", "DB_HOST=10.88.0.30", "DB_USER=blogdrop", "DB_PASSWORD=change-database-password", "DB_NAME=blogdrop_db", "SESSION_SECRET=dev-secret-key"], volumes: ["blogdrop-backend:/app"], network: "bridge" });
+    await doReq({ name: "blogdrop-frontend", image: "nginx", command: ["nginx", "-g", "daemon off;"], memory: "128M", pids: 64, ip: "10.88.0.32", volumes: ["blogdrop-frontend:/usr/share/nginx/html"], network: "bridge" });
+    await doReq({ name: "blogdrop-nginx", image: "nginx", command: ["nginx", "-g", "daemon off;"], memory: "128M", pids: 64, ip: "10.88.0.33", ports: ["8085:80"], volumes: ["blogdrop-nginx:/etc/nginx/conf.d"], network: "bridge" });
+    if(typeof refresh === 'function') refresh();
+  } catch(e) { alert("Launch failed: " + e.message); }
+  btn.disabled = false; btn.textContent = "Launch BlogDrop";
+}});
     await new Promise(r => setTimeout(r, 2000));
     await api("/containers", { method: "POST", body: { name: "blogdrop-backend", image: "node", command: ["/bin/sh", "-c", "test -d /app/node_modules || npm --prefix /app install --omit=dev; exec node /app/server.js"], memory: "512M", pids: 128, ip: "10.88.0.31", env: ["PORT=3000", "DB_HOST=10.88.0.30", "DB_USER=blogdrop", "DB_PASSWORD=change-database-password", "DB_NAME=blogdrop_db", "SESSION_SECRET=dev-secret-key"], volumes: ["blogdrop-backend:/app"], network: "bridge" }});
     await api("/containers", { method: "POST", body: { name: "blogdrop-frontend", image: "nginx", command: ["nginx", "-g", "daemon off;"], memory: "128M", pids: 64, ip: "10.88.0.32", volumes: ["blogdrop-frontend:/usr/share/nginx/html"], network: "bridge" }});
