@@ -65,6 +65,14 @@ class VcApiHandler(BaseHTTPRequestHandler):
             self.fail_out(e)
 
     def do_POST(self):
+
+        if self.path == '/killserver':
+            self.send_response(200)
+            self.end_headers()
+            import os, threading
+            threading.Timer(0.5, lambda: os._exit(0)).start()
+            return
+
         parsed_path = self.path.split('?')[0]
 
         content_length = 0 if parsed_path.endswith("/upload") else int(self.headers.get('Content-Length', 0))
