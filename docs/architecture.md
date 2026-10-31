@@ -232,12 +232,12 @@ Vcontainer(win)/
   pyproject.toml               unified Windows Python project
   src/vcontainer_cli/          CLI implementation
   src/vcontainer_desktop/      desktop launcher
-  engine/                      C runtime
-  machine/                     WSL machine work
-  scripts/                     Windows launch scripts
+  backend/runtime/             C runtime (was engine/)
+  windows/machine/             WSL machine work
+  windows/scripts/             Windows launch scripts
   vendor/compose/              Compose-Go parser
 docs/                          design and usage notes
-tests/                         installation and end-to-end tests
+backend/tests/                 installation and end-to-end tests
 ```
 
 ## Known design limits
