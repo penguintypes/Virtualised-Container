@@ -9,6 +9,7 @@ class H(BaseHTTPRequestHandler):
   raw=json.dumps(value).encode(); self.send_response(200); self.send_header('Content-Type','application/json'); self.send_header('Content-Length',str(len(raw))); self.end_headers(); self.wfile.write(raw)
  def do_GET(self):
   if self.path == '/': raw=Path('/opt/index.html').read_bytes(); self.send_response(200); self.send_header('Content-Type','text/html'); self.send_header('Content-Length',str(len(raw))); self.end_headers(); self.wfile.write(raw)
+  elif self.path == '/R.png': raw=Path('/opt/R.png').read_bytes(); self.send_response(200); self.send_header('Content-Type','image/png'); self.send_header('Content-Length',str(len(raw))); self.end_headers(); self.wfile.write(raw)
   else: self.send({'error':'not found'})
  def do_POST(self):
   try:
