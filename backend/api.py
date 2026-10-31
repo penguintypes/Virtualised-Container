@@ -236,7 +236,10 @@ class VcApiHandler(BaseHTTPRequestHandler):
                     procs.append({"pid": int(pid), "command": cmd})
                 return self.respond_with_json(200, {"processes": procs})
             if len(m_chunks) == 3 and m_chunks[0] == "containers" and m_chunks[2] == "metrics":
-                d = engine.inspect(core.valid_name(m_chunks[1]))
+                try:
+                    d = engine.inspect(core.valid_name(m_chunks[1]))
+                except RuntimeError:
+                    d = {}
                 n = engine._number
                 return self.respond_with_json(200, {
                     "memory_used_bytes": n(d.get("memory_current")) or 0,
