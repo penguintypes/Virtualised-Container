@@ -133,3 +133,11 @@ Prerequisite and root integration checks (`integration.sh` needs root or passwor
 bash backend/tests/verify.sh
 bash backend/tests/integration.sh
 ```
+
+## Credits
+
+This project was developed collaboratively:
+* **parzivalSr**: System integration, GUI development, API bridging, and core engine fixes.
+* **NodyHody**: Core container engine and runtime development.
+* **raiden-dev-sudo**: BlogDrop sample application (backend and database).
+* **anna & Penguin**: UI conceptualization and Demo Web App support.
