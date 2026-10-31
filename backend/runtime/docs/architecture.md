@@ -1,4 +1,4 @@
-# Vcontainer layout
+# vContainer runtime layout
 
 - `src/`: runtime C sources and runtime helper scripts.
 - `include/`: public internal headers shared by C sources.
@@ -6,5 +6,5 @@
 - `examples/`: runnable command examples.
 - `build/`: generated local binaries; not source code.
 
-Persistent named volumes live in the Lima VM at
+Persistent named volumes live on the Ubuntu (WSL2) host at
 `/var/lib/vcontainer/volumes/<name>/_data`.
