@@ -61,7 +61,16 @@ def images():
     out = []
     for path in sorted(core.STORE.glob("*/rootfs")):
         if path.is_dir():
-            out.append(core.read_meta(path.parent.name))
+            meta = core.read_meta(path.parent.name)
+            if not meta.get("size"):
+                import subprocess
+                try: meta["size"] = int(subprocess.check_output(['du', '-sb', str(path)]).decode().split()[0])
+                except: pass
+            if not meta.get("created"):
+                import os, datetime
+                try: meta["created"] = datetime.datetime.fromtimestamp(os.stat(path).st_ctime, datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+                except: pass
+            out.append(meta)
     return out
 
 from contextlib import contextmanager
