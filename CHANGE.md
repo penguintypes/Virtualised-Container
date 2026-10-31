@@ -113,3 +113,18 @@ The WSL installer, PowerShell/NSIS launchers, verification checklist, no-root un
 - almost06: Fixed "list object has no attribute items" error by properly parsing env array iterations.
 - almost06: Fixed the Node backend crash by injecting `sh -c "cd /app && npm start"` because engine lacks working directory support.
 - almost06: Resolved Nginx container launch failure by properly naming the `blogdrop-nginx` volume.
+
+## 2026-10-31 14:40 - change09
+- refactor: moved engine/ to backend/runtime/, samples and tests into backend/, machine/ and scripts/ into windows/; removed engine-arm/
+- refactor: root keeps only README.md, CHANGE.md, install.sh, start.sh, install.ps1, install.nsi, var/, backend/, gui/, docs/, windows/
+- chore: patches/ is local only and gitignored (supersedes the almost06 note about moving scripts into patches/)
+- fix: install.sh stages backend/samples/{blog,runner} to /var/lib/vcontainer/samples before building, so build_helper.sh accepts the source path
+- fix: run_container.sh trap quoting inside bash -c (pull and import), which caused "work: unbound variable"
+- fix: backend/tests/rest_cases.sh sends "memory" in every create payload, as POST /containers requires it
+- fix: backend/tests/rest_cases.sh reads the "output" key from the logs route, not "logs"
+- test: rest_cases.sh 6/6 passed after the restructure
+- feat: BlogDrop account page, admin users table with Reset/Delete, Admin tag, locked admin email
+- feat: BlogDrop duplicate username/email checks (case, dots, +tag)
+- feat: BlogDrop comment delete (commenter, blog author, admin) and per-user view counting
+- feat: dashboard Kill all containers and Kill server buttons
+- docs: README paths updated for the new layout
