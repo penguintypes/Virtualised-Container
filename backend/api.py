@@ -14,6 +14,14 @@ GUI_DIR = Path(__file__).resolve().parents[1] / "gui"
 
 class VcApiHandler(BaseHTTPRequestHandler):
 
+    def origin_ok(self):
+        port = os.getenv("VCONTAINER_PORT", "8080")
+        hosts = {"localhost:" + port, "127.0.0.1:" + port}
+        if self.headers.get("Host", "") not in hosts:
+            return False
+        origin = self.headers.get("Origin")
+        return origin is None or origin in {"http://" + h for h in hosts}
+
     def respond_with_json(self, status_code, payload=None):
         resp_body = b"" if payload is None else json.dumps(payload).encode()
         try:
@@ -34,16 +42,16 @@ class VcApiHandler(BaseHTTPRequestHandler):
         self.respond_with_json(code, {"error": str(err), "code": err_code})
 
     def do_OPTIONS(self):
+        if not self.origin_ok():
+            return self.fail_out("forbidden", "forbidden", 403)
         self.respond_with_json(204)
 
     def do_DELETE(self):
+        if not self.origin_ok():
+            return self.fail_out("forbidden", "forbidden", 403)
         try:
             url_chunks = self.path.strip("/").split("/")
             # container deletion
-            if len(url_chunks) == 2 and url_chunks[0] == "volumes":
-                engine.run_volume("remove", core.valid_name(url_chunks[1]))
-                return self.respond_with_json(204)
-
             if len(url_chunks) == 2 and url_chunks[0] == "volumes":
                 engine.run_volume("remove", core.valid_name(url_chunks[1]))
                 return self.respond_with_json(204)
@@ -65,20 +73,28 @@ class VcApiHandler(BaseHTTPRequestHandler):
             self.fail_out(e)
 
     def do_POST(self):
+        if not self.origin_ok():
+            return self.fail_out("forbidden", "forbidden", 403)
 
         if self.path == '/killserver':
             self.send_response(200)
             self.end_headers()
-            import os, threading
+            import threading
             threading.Timer(0.5, lambda: os._exit(0)).start()
             return
 
         parsed_path = self.path.split('?')[0]
 
-        content_length = 0 if parsed_path.endswith("/upload") else int(self.headers.get('Content-Length', 0))
+        content_length = int(self.headers.get('Content-Length', 0))
+        is_upload = parsed_path.endswith("/upload")
         try:
-            raw_data = self.rfile.read(content_length).decode('utf-8') if content_length > 0 else "{}"
-            req_data = json.loads(raw_data) if raw_data.strip() else {}
+            body = self.rfile.read(content_length) if content_length > 0 else b""
+            if is_upload:
+                raw_data = body
+                req_data = {}
+            else:
+                raw_data = body.decode('utf-8') if body else "{}"
+                req_data = json.loads(raw_data) if raw_data.strip() else {}
             if isinstance(req_data, dict) and "env" in req_data and "environment" not in req_data:
                 req_data["environment"] = req_data["env"]
         except Exception:
@@ -125,12 +141,6 @@ class VcApiHandler(BaseHTTPRequestHandler):
                 res = engine._call("pull", core.valid_name(req_data["name"]), req_data.get("reference", ""), timeout=300)
                 return self.respond_with_json(200, {"message": "pulled", "output": res})
 
-            if parsed.path == "/images/pull":
-                if "name" not in req_data:
-                    return self.fail_out("image name required")
-                res = engine._call("pull", core.valid_name(req_data["name"]), req_data.get("reference", ""), timeout=300)
-                return self.respond_with_json(200, {"message": "pulled", "output": res})
-
             url_chunks = parsed.path.strip("/").split("/")
 
             # upload handling
@@ -142,8 +152,10 @@ class VcApiHandler(BaseHTTPRequestHandler):
                     tmp_file.write(raw_data)
                     tmp_path = tmp_file.name
 
-                upload_res = engine.upload_image(img_name, tmp_path)
-                os.unlink(tmp_path)
+                try:
+                    upload_res = engine.upload_image(img_name, tmp_path)
+                finally:
+                    os.unlink(tmp_path)
                 return self.respond_with_json(201, upload_res)
 
             target_name = core.valid_name(url_chunks[1])
@@ -179,6 +191,8 @@ class VcApiHandler(BaseHTTPRequestHandler):
             self.fail_out(e)
 
     def do_GET(self):
+        if not self.origin_ok():
+            return self.fail_out("forbidden", "forbidden", 403)
         if self.path == "/logo.png":
             self.send_response(200)
             self.send_header("Content-Type", "image/png")
@@ -199,16 +213,6 @@ class VcApiHandler(BaseHTTPRequestHandler):
 
             if parsed_path == "/health":
                 return self.respond_with_json(200, {"ok": True, "capabilities": engine.capabilities()})
-
-            if parsed_path == "/system/disk":
-                return self.respond_with_json(200, engine.get_disk_usage())
-
-            if parsed_path == "/volumes":
-                return self.respond_with_json(200, {"volumes": engine.run_volume("list")})
-
-            if parsed_path.startswith("/volumes/") and len(parsed_path.strip("/").split("/")) == 2:
-                v_name = parsed_path.strip("/").split("/")[1]
-                return self.respond_with_json(200, engine.run_volume("inspect", v_name))
 
             if parsed_path == "/system/disk":
                 return self.respond_with_json(200, engine.get_disk_usage())
@@ -263,36 +267,16 @@ class VcApiHandler(BaseHTTPRequestHandler):
             if parsed_path == "/images":
                 return self.respond_with_json(200, engine.images())
 
-            if parsed_path == "/volumes":
-                vol_name = req_data.get("name")
-                if not vol_name:
-                    return self.fail_out("volume name required")
-                return self.respond_with_json(201, engine.run_volume("create", vol_name))
-
-            if parsed_path == "/volumes":
-                # Ensure req_data is parsed safely
-                vol_name = req_data.get("name") if isinstance(req_data, dict) else None
-                if not vol_name:
-                    return self.fail_out("volume name required")
-                return self.respond_with_json(201, engine.run_volume("create", vol_name))
-
             if parsed_path == "/containers":
                 return self.respond_with_json(200, engine.containers())
 
             url_chunks = parsed_path.strip("/").split("/")
 
-            if len(url_chunks) == 2 and url_chunks[0] == "volumes":
-                engine.run_volume("remove", core.valid_name(url_chunks[1]))
-                return self.respond_with_json(204)
-
             if len(url_chunks) == 2 and url_chunks[0] == "containers":
                 return self.respond_with_json(200, engine.inspect(core.valid_name(url_chunks[1])))
 
-            if len(url_chunks) == 2 and url_chunks[0] == "containers":
+            if len(url_chunks) == 3 and url_chunks[0] == "containers" and url_chunks[2] == "stats":
                 return self.respond_with_json(200, engine.stats(core.valid_name(url_chunks[1])))
-
-            if len(url_chunks) == 2 and url_chunks[0] == "containers":
-                return self.respond_with_json(200, engine.logs(core.valid_name(url_chunks[1])))
 
             if len(url_chunks) == 3 and url_chunks[0] == "images" and url_chunks[2] == "download":
                 img_tar = engine.export_image(core.valid_name(url_chunks[1]))
@@ -341,18 +325,16 @@ def main():
 
 
 try:
-    import os, json
-    if os.path.exists('var/engine.json'):
-        with open('var/engine.json', 'r+') as f:
-            db = json.load(f)
-            changed = False
-            for n, c in db.get('containers', {}).items():
-                if c.get('status') == 'running' and not os.path.exists(f'/sys/fs/cgroup/vcontainer/{n}'):
-                    c['status'] = 'stopped'
-                    changed = True
-            if changed:
-                f.seek(0); f.truncate(); json.dump(db, f)
-except Exception: pass
+    _db = engine._load()
+    _changed = False
+    for _n, _c in _db.items():
+        if isinstance(_c, dict) and _c.get('status') == 'running' and not os.path.exists('/sys/fs/cgroup/vcontainer/' + _n):
+            _c['status'] = 'stopped'
+            _changed = True
+    if _changed:
+        engine._save(_db)
+except Exception:
+    pass
 
 if __name__ == "__main__":
     main()
