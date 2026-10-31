@@ -61,7 +61,7 @@ Vanilla HTML, CSS and JS in `gui/`, no CDN, works offline.
 
 - **Home:** four number tiles (Running, Stopped, Images, Disk), four live graphs (CPU and memory, host and containers) that turn orange and then red as usage rises, Quick start buttons (Run Blog, Run Runner, Launch BlogDrop) and container cards, three per row.
 - **Container details:** console (exec), logs, live memory and PID stats, and Stop / Start / Delete buttons.
-- **Containers, Images and Volumes:** tables. Images has Upload .tar, Download and Build from Vcfile.
+- **Containers, Images and Volumes:** tables. Images has Pull image and Delete.
 - **Top bar:** Run Container, Kill all containers and Kill server.
 - **Offline:** if the backend stops, the dashboard stays up and shows an offline state.
 
@@ -105,6 +105,7 @@ Blog and Runner start from Quick start on Home. Each click creates a new contain
 ## Security Model
 
 - **Least privilege:** the Python API runs as an unprivileged user bound to `127.0.0.1`.
+- **Origin check:** requests whose `Host` or `Origin` is not `localhost` or `127.0.0.1` on the API port get 403, so other websites cannot drive the API from the browser.
 - **Strict sudoers scope:** `/etc/sudoers.d/vcontainer` allows only two root-owned scripts in `/usr/local/libexec/vcontainer/`: `run_container.sh` (namespaces, cgroups, overlay mounts) and `build_helper.sh` (a constrained wrapper for build tasks with path-checked `rm`). After editing `backend/runtime/*.sh`, redeploy with `sudo install -o root -g root -m 755 backend/runtime/<file> /usr/local/libexec/vcontainer/<file>`.
 - **Isolation layers:** PID, mount, UTS, IPC, network and user namespaces, cgroup v2 limits and overlayfs.
 - **Seccomp (on by default):** a deny-list filter blocks mount, umount2, pivot_root, reboot, init/finit/delete_module, ptrace, unshare and setns, and `no_new_privs` is set.
