@@ -11,6 +11,7 @@ class H(BaseHTTPRequestHandler):
   raw = body if isinstance(body, bytes) else body.encode(); self.send_response(code); self.send_header('Content-Type', kind); self.send_header('Content-Length', str(len(raw))); self.end_headers(); self.wfile.write(raw)
  def do_GET(self):
   if self.path == '/': return self.send(200, Path('/opt/index.html').read_bytes())
+  if self.path == '/B.png': return self.send(200, Path('/opt/B.png').read_bytes(), 'image/png')
   if self.path.startswith('/posts/'):
    name = Path(self.path[7:]).name + '.md'; file = ROOT / name
    return self.send(200, file.read_text() if file.exists() else '', 'text/plain')
