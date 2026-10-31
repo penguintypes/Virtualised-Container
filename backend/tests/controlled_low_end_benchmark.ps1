@@ -26,7 +26,7 @@ function Wait-Api {
             return
         } catch { Start-Sleep -Milliseconds 200 }
     }
-    throw "Vcontainer API did not start"
+    throw "vContainer API did not start"
 }
 
 function Start-WslApi {
