@@ -14,7 +14,7 @@ $updated = @(
 )
 
 if ($updated.Count -eq $entries.Count) {
-    Write-Host "Vcontainer is not in the user PATH."
+    Write-Host "vContainer is not in the user PATH."
     exit 0
 }
 
@@ -24,5 +24,5 @@ if ($updated.Count -eq $entries.Count) {
     "User"
 )
 
-Write-Host "Removed Vcontainer from the user PATH."
+Write-Host "Removed vContainer from the user PATH."
 Write-Host "Open a new terminal to apply the change."
