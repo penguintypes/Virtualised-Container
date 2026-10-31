@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BlogDrop</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body class="guest-mode">
+
+    <div class="mobile-header">
+        <h2>Blog<span>Drop</span></h2>
+        <button id="menuBtn">☰</button>
+    </div>
+
+    <aside class="sidebar" id="sidebar">
+        <button type="button" id="closeSidebar" class="close-sidebar" aria-label="Close menu">✕</button>
+
+        <div class="logo">
+            <h2>Blog<span>Drop</span></h2>
+            <p>Turn your thoughts into words</p>
+        </div>
+
+        <nav>
+            <button class="nav-btn active" data-section="home">Home</button>
+            <button class="nav-btn" data-section="myblogs">My Blogs</button>
+        </nav>
+
+        <div class="sidebar-bottom">
+            <button type="button" id="accountBtn" class="account-btn" hidden>
+                <span class="avatar" id="accountAvatar">?</span>
+                <span class="account-email" id="accountEmail"></span>
+            </button>
+            <p>© 2026 BlogDrop</p>
+        </div>
+    </aside>
+
+    <div class="auth-topbar">
+        <div class="auth-welcome">
+            <strong>Welcome to BlogDrop</strong>
+            <span id="authStatus">You are browsing as a guest</span>
+        </div>
+
+        <div class="auth-actions">
+            <button id="loginBtn" class="auth-btn">Login</button>
+            <button id="registerBtn" class="auth-btn auth-primary">Register</button>
+        </div>
+    </div>
+
+    <section id="authForms" class="auth-forms" hidden>
+
+        <div id="registerForm" class="auth-card" hidden>
+            <h2>Create an Account</h2>
+            <p>Join BlogDrop today!</p>
+
+            <form id="registerFormElement">
+                <label for="registerUsername">Username</label>
+                <input id="registerUsername" name="username" type="text" maxlength="50" required>
+
+                <label for="registerEmail">Email</label>
+                <input id="registerEmail" name="email" type="email" required>
+
+                <label for="registerPassword">Password</label>
+                <input id="registerPassword" name="password" type="password" minlength="8" required>
+
+                <button type="submit" class="primary-btn">Create Account</button>
+                <button type="button" id="rcloseAuthBtn" class="back-btn">Cancel</button>
+                <button type="button" id="switchToLogin" class="back-btn">Already have an account? Log in</button>
+            </form>
+        </div>
+
+        <div id="loginForm" class="auth-card" hidden>
+            <h2>Welcome Back</h2>
+            <p>Log in to your BlogDrop account.</p>
+
+            <form id="loginFormElement">
+                <label for="loginEmail">Email</label>
+                <input id="loginEmail" name="email" type="email" required>
+
+                <label for="loginPassword">Password</label>
+                <input id="loginPassword" name="password" type="password" required>
+
+                <button type="submit" class="primary-btn">Login</button>
+                <button type="button" id="lcloseAuthBtn" class="back-btn">Cancel</button>
+                <button type="button" id="switchToRegister" class="back-btn">New here? Sign up</button>
+            </form>
+        </div>
+
+        <p id="authMessage" role="status"></p>
+    </section>
+
+    <main class="main-content">
+
+        <section id="home" class="page active">
+            <div class="page-header">
+                <div>
+                    <h1>Home</h1>
+                    <p>Latest posts from everyone on BlogDrop.</p>
+                </div>
+                <input type="search" id="searchInput" class="search-input" placeholder="Search by title or author...">
+            </div>
+            <div id="homeBlogs" class="my-blogs-grid"></div>
+        </section>
+
+        <section id="myblogs" class="page">
+            <div class="page-header">
+                <div>
+                    <h1>My Blogs</h1>
+                    <p>Manage your published articles.</p>
+                </div>
+                <button class="primary-btn" id="newBlogBtn">+ New Blog</button>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon purple">📝</div>
+                    <div><p>Total Blogs</p><h2 id="totalBlogs">0</h2></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon blue">👁️</div>
+                    <div><p>Total Views</p><h2 id="totalViews">0</h2></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon pink">💬</div>
+                    <div><p>Total Comments</p><h2 id="totalComments">0</h2></div>
+                </div>
+            </div>
+
+            <div id="myBlogs" class="my-blogs-grid"></div>
+        </section>
+
+        <section id="write" class="page">
+            <div class="page-header">
+                <div>
+                    <h1>Write a Blog</h1>
+                    <p>Turn your thoughts into something readable.</p>
+                </div>
+                <button class="primary-btn" id="cancelWriteBtn">Cancel</button>
+            </div>
+
+            <div class="editor-card">
+                <div class="form-group">
+                    <label for="blogTitle">Blog Title</label>
+                    <input type="text" id="blogTitle" placeholder="Enter your blog title..." maxlength="100">
+                </div>
+
+                <div class="form-group">
+                    <label for="blogContent">Your Blog</label>
+                    <textarea id="blogContent" placeholder="Start writing your blog here..."></textarea>
+                </div>
+
+                <div class="editor-footer">
+                    <span id="charCount">0 characters</span>
+                    <button class="primary-btn" id="publishBtn">Publish Blog</button>
+                </div>
+            </div>
+        </section>
+
+        <section id="reader" class="page">
+            <button class="back-btn" id="readerBack">← Back to Blogs</button>
+
+            <article class="reader-card">
+                <div class="reader-meta">
+                    <span id="readerAuthor"></span>
+                    <span>•</span>
+                    <span id="readerDate"></span>
+                    <span>•</span>
+                    <span id="readerViews"></span>
+                </div>
+
+                <h1 id="readerTitle"></h1>
+                <div id="readerContent" class="reader-content"></div>
+
+                <div class="comments-section">
+                    <h2>Comments (<span id="commentCount">0</span>)</h2>
+
+                    <div class="comment-form" id="commentForm">
+                        <textarea id="commentText" placeholder="Write a comment..." maxlength="500"></textarea>
+                        <button class="primary-btn" id="postCommentBtn">Post Comment</button>
+                    </div>
+
+                    <p class="muted" id="commentLogin" hidden>
+                        Log in to comment.
+                        <button class="text-btn" id="commentLoginBtn">Log in</button>
+                    </p>
+
+                    <div id="commentsList"></div>
+                </div>
+            </article>
+        </section>
+
+        <section id="account" class="page">
+            <div class="page-header">
+                <div>
+                    <h1>My Account</h1>
+                    <p>Manage your profile and security.</p>
+                </div>
+                <button class="primary-btn" id="logoutBtn">Log out</button>
+            </div>
+
+            <div class="account-grid">
+                <div class="content-card account-card">
+                    <h2>Profile</h2>
+                    <div class="form-group">
+                        <label for="accUsername">Username</label>
+                        <input id="accUsername" type="text" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label for="accEmail">Email</label>
+                        <input id="accEmail" type="text" readonly>
+                    </div>
+                </div>
+
+                <div class="content-card account-card">
+                    <h2>Change password</h2>
+                    <form id="passwordForm">
+                        <div class="form-group">
+                            <label for="pwCurrent">Current password</label>
+                            <input id="pwCurrent" type="password" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="pwNew">New password</label>
+                            <input id="pwNew" type="password" minlength="8" maxlength="72" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="pwConfirm">Confirm new password</label>
+                            <input id="pwConfirm" type="password" minlength="8" maxlength="72" required>
+                        </div>
+                        <button type="submit" class="primary-btn">Change password</button>
+                    </form>
+                </div>
+
+                <div class="content-card account-card">
+                    <h2>Delete account</h2>
+                    <p class="muted">Permanently deletes your account, your blogs and your comments.</p>
+                    <button class="primary-btn danger-btn" id="deleteAccountBtn">Delete account</button>
+                </div>
+            </div>
+
+            <div class="content-card" id="adminCard" hidden>
+                <h2>Admin: users</h2>
+                <div class="table-wrap">
+                    <table class="admin-table">
+                        <thead>
+                            <tr><th>ID</th><th>Username</th><th>Email</th><th>Blogs</th><th></th></tr>
+                        </thead>
+                        <tbody id="adminUsers"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <div id="modalOverlay" class="modal-overlay" hidden>
+        <div class="modal-card" role="dialog" aria-modal="true">
+            <h3 id="modalTitle"></h3>
+            <p id="modalMessage"></p>
+            <div id="modalFields"></div>
+            <div class="modal-actions">
+                <button type="button" class="back-btn" id="modalCancel">Cancel</button>
+                <button type="button" class="primary-btn" id="modalOk">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
