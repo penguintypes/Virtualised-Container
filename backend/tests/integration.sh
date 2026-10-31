@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-cli="$root/engine/run_container.sh"
+root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+cli="$root/backend/runtime/run_container.sh"
 [ "$(id -u)" -eq 0 ] || { echo 'integration tests require root or passwordless sudo'; exit 2; }
 "$cli" run alpine --name itest --detach --memory-max 64M --pids-max 8 -- sh -c 'hostname; echo secret >/tmp/inside; sleep 3600'
 "$cli" inspect itest | tee /tmp/vcontainer-inspect
