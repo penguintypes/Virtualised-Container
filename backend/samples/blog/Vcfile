@@ -2,4 +2,5 @@ FROM alpine
 RUN apk add --no-cache python3
 COPY blog_server.py /opt/blog_server.py
 COPY index.html /opt/index.html
+COPY B.png /opt/B.png
 CMD ["python3", "/opt/blog_server.py"]
