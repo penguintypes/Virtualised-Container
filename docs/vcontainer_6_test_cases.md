@@ -7,7 +7,7 @@ Verifies the runtime end-to-end through the REST API. Tested on WSL2 Ubuntu 26.0
 ## Run all cases with one command
 
 ```bash
-bash tests/rest_cases.sh
+bash backend/tests/rest_cases.sh
 ```
 
 Expected: six `PASS` lines, then `RESULT 6/6 passed`. Takes about 1 minute and cleans up after itself.
