@@ -152,3 +152,14 @@ The WSL installer, PowerShell/NSIS launchers, verification checklist, no-root un
 - fix: product name is vContainer in UI text, installer and docs
 - docs: README rewritten; runtime README refreshed; removed stale api, windows-client and architecture docs
 - chore: removed unused blog.tar and runner.tar LFS pointers and .mailmap
+
+## 2026-10-31 20:50 - change14
+- fix: POST /images/{name}/upload reads the request body (it wrote a str to a binary file)
+- fix: local import os in do_POST shadowed os, breaking upload cleanup and the nameless-container fallback
+- feat: Host and Origin check on every method; other sites get 403
+- fix: GET /containers/{name}/stats route added; duplicate and unreachable routes removed, including a GET that deleted volumes
+- fix: startup status cleanup now reads the flat engine.json
+- chore: engine.py duplicate stop() and import removed
+- test: REST case B1 checks the end of the page because logs return the last 15 lines
+- docs: README Images page text; Origin check in the security model
+- known limits: SESSION_SECRET and ADMIN_EMAIL are hardcoded in the BlogDrop launch env; /api/check has no rate limit; the NOPASSWD rule covers build_helper.sh run_chroot; published ports listen on all interfaces
