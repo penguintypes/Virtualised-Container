@@ -184,19 +184,25 @@ def inspect(name):
     return record | data
 
 def containers():
-    return [inspect(name) for name in sorted(_load())]
-
-def stop(name):
-    result = _record(name, status="exited", output="")
-    _call("stop", name)
-    return result
-
+    res = []
+    for name in sorted(_load()):
+        try:
+            res.append(inspect(name))
+        except Exception:
+            pass
+    return res
 def remove(name):
     try: _call("stop", name)
     except Exception: pass
     try: _call("rm", name)
     except Exception: pass
     data = _load(); data.pop(name, None); _save(data)
+
+def stop(name):
+    _call("stop", name)
+
+def stop(name):
+    _call("stop", name)
 
 def logs(name): return {"logs": _call("logs", name)}
 def execute(name, command):
