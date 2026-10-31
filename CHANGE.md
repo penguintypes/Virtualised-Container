@@ -137,3 +137,6 @@ The WSL installer, PowerShell/NSIS launchers, verification checklist, no-root un
 - feat: container details pane has Stop/Start and Delete buttons
 - fix: container grid is 3 per row, 2 at half width; Images has a Created column; roomier Images and Volumes tables
 - fix: dashboard active view persists across hard refresh; adjusted button spacing and health tick styling
+
+## 2026-10-31 18:50 - change12
+- feat: added custom favicons and UI logos for dashboard, blog, runner, and BlogDrop
