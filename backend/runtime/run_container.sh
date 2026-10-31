@@ -40,7 +40,7 @@ case "$action" in
             set -eu
             project_dir="$1"
             work=$(mktemp -d)
-            trap 'sudo rm -rf "$work"' EXIT
+            trap "sudo rm -rf -- $work" EXIT
             mkdir -p "$work"
             cp "$project_dir/src/image.sh" "$work/"
             cd "$work"
@@ -270,7 +270,7 @@ case "$action" in
             set -eu
             project_dir="$1"
             work=$(mktemp -d)
-            trap 'sudo rm -rf "$work"' EXIT
+            trap "sudo rm -rf -- $work" EXIT
             mkdir -p "$work"
             cp "$project_dir/src/image.sh" "$work/"
             cd "$work"
@@ -616,6 +616,7 @@ bash -c '
   if [ -n "$publish_port" ]; then
       host_port="${publish_port%%:*}"
       container_port="${publish_port##*:}"
+      sleep 0.3
       sudo socat "TCP-LISTEN:$host_port,fork,reuseaddr" "TCP:$container_ip:$container_port" >/dev/null 2>&1 &
       socat_pid=$!
       (
