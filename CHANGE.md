@@ -128,3 +128,6 @@ The WSL installer, PowerShell/NSIS launchers, verification checklist, no-root un
 - feat: BlogDrop comment delete (commenter, blog author, admin) and per-user view counting
 - feat: dashboard Kill all containers and Kill server buttons
 - docs: README paths updated for the new layout
+
+## 2026-10-31 15:11 - change10
+- fix: GET /containers/{name}/metrics returns zeroed metrics instead of a 400 when the container dies during inspect (mountinfo read race)
