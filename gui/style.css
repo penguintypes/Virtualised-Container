@@ -969,3 +969,48 @@ header { margin-bottom: 10px; }
 }
 
 #actions { display: flex; gap: 8px; }
+
+/* v4: Table row hover and warm, spacy action buttons */
+.image-table-container tbody tr { transition: background-color 0.2s ease; }
+.image-table-container tbody tr:hover { background-color: rgba(0, 0, 0, 0.04); }
+[data-theme="dark"] .image-table-container tbody tr:hover { background-color: rgba(255, 255, 255, 0.06); }
+
+.image-table-container td:last-child button,
+#actions button {
+    padding: 6px 20px !important;
+    transition: all 0.2s ease;
+}
+.image-table-container td:last-child button + button {
+    margin-left: 12px !important;
+}
+.image-table-container td:last-child button:hover,
+#actions button:hover {
+    border-color: #d89b13 !important;
+    box-shadow: inset 0 0 4px rgba(216, 155, 19, 0.15), 0 0 6px rgba(216, 155, 19, 0.3) !important;
+}
+[data-theme="dark"] .image-table-container td:last-child button:hover,
+[data-theme="dark"] #actions button:hover {
+    border-color: #e5a924 !important;
+    box-shadow: inset 0 0 4px rgba(229, 169, 36, 0.15), 0 0 6px rgba(229, 169, 36, 0.3) !important;
+}
+
+/* v5: Center table content */
+.image-table-container th,
+.image-table-container td {
+    text-align: center !important;
+}
+.image-table-container td:last-child {
+    display: table-cell !important;
+    text-align: center !important;
+}
+
+/* v6: Fix table lining and increase text size */
+.image-table-container th,
+.image-table-container td {
+    font-size: 14.5px !important;
+    vertical-align: middle !important;
+}
+.image-table-container td:last-child {
+    display: table-cell !important;
+    text-align: center !important;
+}
