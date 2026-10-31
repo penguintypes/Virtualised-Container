@@ -1,7 +1,8 @@
 # Changes
 
-## Phase 1: Engine patches
-The friend’s WSL launcher and C engine remain the execution authority; only the listed bug fixes and socat port forwarding were added.
+## 2026-10-13 to 2026-10-27 - change01
+### Engine patches
+The WSL launcher and C engine remain the execution authority; only the listed bug fixes and socat port forwarding were added.
 - `engine/src/image.sh`: changed image and OCI stores from `/tmp` to `/var/lib/vcontainer` so the API and CLI share images.
 - `engine/run_container.sh`: lists all image directories, waits before cgroup removal, unmounts overlay state, avoids clean rebuilds, validates unknown commands, adds `-p` and socat cleanup.
 - `engine/src/vcontainer.c`: defaults hostname to the container name, uses the persistent image store, and confirms detached `execvp` through a CLOEXEC pipe.
@@ -23,8 +24,9 @@ The friend’s WSL launcher and C engine remain the execution authority; only th
 - fix: engine.inspect pops cgroup pids to prevent shadowing the saved pids limit
 - sec: replace hardcoded /tmp/vcontainer-work with mktemp -d to prevent collision and symlink attacks
 
-## Phase 2: Adapter and API
-The old Python lifecycle runtime was removed from the merged design. The adapter translates API operations to the friend CLI and keeps only user-facing metadata locally. `backend/engine.py` delegates lifecycle, limits, namespaces, logs, exec, and image import/pull work to the friend launcher. `backend/core.py` only parses Vcfiles and reads image metadata. `backend/api.py` is the only server and serves the dashboard.
+## 2026-10-25 to 2026-10-26 - change02
+### Adapter and API
+The old Python lifecycle runtime was removed from the merged design. The adapter translates API operations to the runtime CLI and keeps only user-facing metadata locally. `backend/engine.py` delegates lifecycle, limits, namespaces, logs, exec, and image import/pull work to the runtime launcher. `backend/core.py` only parses Vcfiles and reads image metadata. `backend/api.py` is the only server and serves the dashboard.
 - fix: backend/engine.py run() accepts command as a string (shlex.split) as well as a list; string form raised bad_request
 - fix: backend/engine.py remove() stops a running container before rm, so API and dashboard delete work on running containers
 - fix: backend api forwards clean and update flags to engine.build
@@ -32,7 +34,8 @@ The old Python lifecycle runtime was removed from the merged design. The adapter
 - fix: resolve test imports, stop loop, mojibake, and security leaks
 - refactor: de-golf api.py for better human readability
 
-## Phase 3: Samples and Dashboard (UI)
+## 2026-10-25 to 2026-10-27 - change03
+### Samples and dashboard
 Vcfile `RUN`, persisted `meta.json`, Alpine blog/runner images, the two sample UIs, and the vanilla dashboard were added. The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments and Markdown preview, and the runner uses Python, Node, and C. Java was omitted to keep the sample image smaller. The dashboard supports run, start, stop, logs, delete, build, stats, and published-port links.
 - fix: repaired alpine meta.json (invalid JSON made GET /images return 400)
 - fix: samples/blog/index.html poll() ignores empty server responses, so the default post text no longer disappears
@@ -51,7 +54,7 @@ Vcfile `RUN`, persisted `meta.json`, Alpine blog/runner images, the two sample U
 - fix: stable card and detail layout for stopped containers, Details as its own table column
 - fix: tighter top and bottom spacing so Home has no scrollbar with two containers
 
-## Phase 4: Installer and Tests
+### Installer and tests
 The WSL installer, PowerShell/NSIS launchers, verification checklist, no-root unit tests, and rootful integration script were added.
 - fix: install.sh wrote alpine meta.json with escaped quotes, which made the file invalid JSON
 - fix: install.sh asks for the sudoers NOPASSWD rule via /dev/tty when piped (curl | bash); defaults to no when there is no terminal, VC_SUDOERS=y overrides
@@ -62,20 +65,21 @@ The WSL installer, PowerShell/NSIS launchers, verification checklist, no-root un
 - test: verify install.exe works on Windows
 - test: rest_cases.sh runs cases in the doc order (B1, B2, C1, C2, A1, A2); vcontainer_6_test_cases.md C1 now uses the API stop like the script
 
-## Documentation
+### Documentation
 - docs: README documents Ubuntu version and the root-owned deploy rule
 - docs: README install section now says clone + bash install.sh (removed the one-line curl installer, which cannot work), notes install.exe is built locally with makensis, and points to engine-arm/
 - docs: ARCHITECTURE.md names run_container.sh instead of a stray backticked phrase
 - docs: mark C:\ path installation as verified
 - docs: README and ARCHITECTURE.md describe seccomp default, the dashboard, GET /system, image upload/download, start route and the 6 REST cases
 
-## Chores and Cleanup
+### Chores and cleanup
 - chore: removed one-off patch scripts (patch_images.py)
 - chore: removed duplicated JS/CSS blocks in gui/app.js and gui/style.css
 - chore: removed fix_install.py, fix_dropdown.py, cleanup.py, vcontainer-source-dump.txt, and install.exe
 - chore: ignore vcontainer_source_dump.txt in git
-## 2026-10-29 - change04
-- Merged friend's GUI layout and features into stdlib backend
+
+## 2026-10-29 20:22 - change04
+- Merged the alternate GUI layout and features into the stdlib backend
 - Added /system/disk and /volumes API endpoints using Python 3.14 stdlib
 - Stripped desktop window/pywebview bindings from GUI for clean browser support
 
@@ -91,7 +95,7 @@ The WSL installer, PowerShell/NSIS launchers, verification checklist, no-root un
 - 2026-10-30 12:19 fix: repair backend run_volume to use engine script for safe deletion
 - 2026-10-30 12:19 feat: patch C engine to support --env and create standard /dev nodes
 
-## 2026-10-31 - change08
+## 2026-10-31 02:53 - change08
 - feat: Added live graphs, compact cards, and Details routes to dashboard GUI
 - feat: Added /images/pull and /system/live API routes for dashboard metrics
 - feat: API POST /containers now requires a `memory` parameter to prevent host OOM
@@ -140,3 +144,11 @@ The WSL installer, PowerShell/NSIS launchers, verification checklist, no-root un
 
 ## 2026-10-31 18:50 - change12
 - feat: added custom favicons and UI logos for dashboard, blog, runner, and BlogDrop
+
+## 2026-10-31 20:16 - change13
+- feat: dashboard header logo; Quick start buttons read Run Blog and Run Runner; sample apps renamed Blog and Runner
+- fix: sample images keep their logos after install.sh rebuilds (Vcfile COPY of B.png and R.png)
+- fix: BlogDrop launch shows all four containers together (the backend still starts after the database)
+- fix: product name is vContainer in UI text, installer and docs
+- docs: README rewritten; runtime README refreshed; removed stale api, windows-client and architecture docs
+- chore: removed unused blog.tar and runner.tar LFS pointers and .mailmap
