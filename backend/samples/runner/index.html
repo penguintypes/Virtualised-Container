@@ -1,5 +1,5 @@
 <!doctype html>
-<meta charset="utf-8"><title>vcontainer runner</title>
+<meta charset="utf-8"><title>Runner</title>
 <link rel="icon" href="R.png" />
 <style>
 body{font:14px "Segoe UI",system-ui,sans-serif;margin:0;background:#1e1e1e;color:#d4d4d4;height:100vh;display:flex;flex-direction:column}
@@ -22,7 +22,7 @@ textarea{background:#1e1e1e}
 pre{background:#111;white-space:pre-wrap;color:#4ec9b0}
 </style>
 <header>
-  <h1><img src="R.png" style="height: 28px; object-fit: contain; vertical-align: bottom; margin-right: 10px;" /> { vcontainer / runner }</h1>
+  <h1><img src="R.png" style="height: 22px; object-fit: contain; vertical-align: text-bottom; margin-right: 8px; transform: translateY(2px);" /> Runner</h1>
   <div class="controls">
     <select id="language"><option>python</option><option>node</option><option>c</option></select>
     <button onclick="run()">▶ Run Code</button>
@@ -35,7 +35,7 @@ pre{background:#111;white-space:pre-wrap;color:#4ec9b0}
   <div class="line-numbers" id="lines"></div>
   <div style="position:relative; flex:1; overflow:hidden; background:#1e1e1e">
     <pre id="highlight" style="position:absolute; inset:0; margin:0; padding:20px; color:#d4d4d4; font-family:'Consolas','Courier New',monospace; font-size:15px; line-height:1.5; white-space:pre; overflow:hidden; pointer-events:none;"></pre>
-    <textarea id="code" spellcheck="false" style="position:absolute; inset:0; margin:0; padding:20px; color:transparent; background:transparent; caret-color:#d4d4d4; font-family:'Consolas','Courier New',monospace; font-size:15px; line-height:1.5; white-space:pre; overflow:auto; border:none; outline:none; resize:none;">print("hello from vcontainer")</textarea>
+    <textarea id="code" spellcheck="false" style="position:absolute; inset:0; margin:0; padding:20px; color:#d4d4d4; background:#1e1e1e; caret-color:#d4d4d4; font-family:'Consolas','Courier New',monospace; font-size:15px; line-height:1.5; white-space:pre; overflow:auto; border:none; outline:none; resize:none;">print("hello from vcontainer")</textarea>
   </div>
 </div>
   </div>
