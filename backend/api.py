@@ -179,13 +179,19 @@ class VcApiHandler(BaseHTTPRequestHandler):
             self.fail_out(e)
 
     def do_GET(self):
+        if self.path == "/logo.png":
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.end_headers()
+            self.wfile.write(open("gui/logo.png", "rb").read())
+            return
         parsed_path = urlparse(self.path).path
         try:
             if parsed_path in ("/", "/index.html"):
                 # quick shortcut for dashboard
                 return self.serve_gui("index.html", "text/html")
 
-            if parsed_path in ("/7.css", "/style.css", "/app.js") or parsed_path.endswith((".css", ".js")):
+            if parsed_path in ("/7.css", "/style.css", "/app.js") or parsed_path.endswith((".css", ".js", ".png", ".ico")):
                 return self.serve_gui(parsed_path.lstrip("/"))
 
             if parsed_path.startswith("/static/"):
