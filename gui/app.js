@@ -12,7 +12,7 @@ const esc = (value) =>
       })[character],
   );
 const encode = encodeURIComponent;
-let activeView = "home";
+let activeView = sessionStorage.getItem("activeView") || "home";
 let skipMetrics = false;
 let refreshTimer = null;
 let inspectedVolume = null;
@@ -201,10 +201,11 @@ function containerCard(container, metrics = null) {
 }
 
 async function renderHome() {
-  const [containers, images, disk] = await Promise.all([
+  const [containers, images, disk, volumesRaw] = await Promise.all([
     getContainers(),
     api("/images"),
     api("/system/disk").catch(() => null),
+    api("/volumes").catch(() => []),
   ]);
   const runningContainers = containers.filter(
     (item) => item.status === "running",
@@ -237,13 +238,8 @@ async function renderHome() {
   $("#content").innerHTML = `<div class="container-summary">
       <article class="card"><span>Running</span><strong>${running}</strong></article>
       <article class="card"><span>Stopped</span><strong>${containers.length - running}</strong></article>
-      <article class="card"><span>Images</span><strong>${asList(images, "images").length}</strong></article>
-      <article class="card"><span>Disk utillization</span><strong>${disk ? bytes(disk.used_bytes) : "—"}</strong><small>${disk ? `Writable layers, metadata and logs · ${disk.container_count} containers` : "Disk usage unavailable"}</small></article>
-    </div>
-    <div class="resource-statistics">
-      <article class="card resource-statistic-card"><span>Combined CPU</span><strong>${cpu.toFixed(1)}%</strong><small>${running} running containers</small></article>
-      <article class="card resource-statistic-card"><span>Container memory</span><strong>${bytes(memoryUsed)}</strong><small>Current cgroup usage</small></article>
-      <article class="card resource-statistic-card"><span>Processes</span><strong>${processes}</strong><small>Across running containers</small></article>
+      <article class="card"><span>Images</span><strong>${asList(images, "images").length}</strong><small>${asList(volumesRaw, "volumes").length} volumes</small></article>
+      <article class="card"><span>Disk utilization</span><strong>${disk ? bytes(disk.used_bytes) : "—"}</strong><small>${disk ? `Writable layers, metadata and logs · ${disk.container_count} containers` : "Disk usage unavailable"}</small></article>
     </div>
     <div class="section-title"><h2>Containers</h2><button data-action="refresh">Refresh</button></div>
     <div class="container-grid">${containers.length ? containers.map((container) => containerCard(container, metrics[container.name])).join("") : '<div class="empty-state">No containers yet.</div>'}</div>`;
@@ -279,12 +275,12 @@ async function renderImages() {
     '<button class="default" data-action="pull">Pull image</button>';
   $("#content").innerHTML = images.length
     ? `<div class="card image-table-container"><table>
-    <thead><tr><th>Name</th><th>Size</th><th></th></tr></thead>
+    <thead><tr><th>Name</th><th>Size</th><th>Created</th><th></th></tr></thead>
     <tbody>${images
       .map(
         (
           image,
-        ) => `<tr><td data-label="Name"><b class="image-name">${esc(image.name)}</b></td><td data-label="Size">${image.size ? (image.size / 1048576).toFixed(1) + " MB" : ""}</td>
+        ) => `<tr><td data-label="Name"><b class="image-name">${esc(image.name)}</b></td><td data-label="Size">${image.size ? (image.size / 1048576).toFixed(1) + " MB" : "—"}</td><td data-label="Created">${image.created ? esc(new Date(image.created).toLocaleDateString()) : "—"}</td>
       <td><button class="danger" data-action="delete-image" data-name="${esc(image.name)}">Delete</button></td></tr>`,
       )
       .join("")}</tbody>
@@ -376,51 +372,91 @@ async function loadVolumeDetails(name, request) {
   </div>`;
 }
 
-const liveHist = { cpu: [], ram: [] };
+const WARN = 60, CRIT = 85; // percent: orange from WARN, red from CRIT
+const liveHist = { cpuH: [], cpuC: [], ramH: [], ramC: [] };
+const LIVE_TILES = [
+  ["cpuH", "CPU · host", "#3a7bd5"],
+  ["cpuC", "CPU · containers", "#3a7bd5"],
+  ["ramH", "RAM · host", "#2e9e5b"],
+  ["ramC", "RAM · containers", "#2e9e5b"],
+];
 let liveLast = null;
 
 function liveHtml() {
-  return `<div class="live-row"><div class="card"><div class="space-between-row"><b>CPU usage</b><span id="live-cpu-val">—</span></div><canvas id="live-cpu"></canvas></div><div class="card"><div class="space-between-row"><b>RAM usage</b><span id="live-ram-val">—</span></div><canvas id="live-ram"></canvas></div></div>`;
+  return `<div class="live-row">${LIVE_TILES.map(([k, title]) => `<div class="card"><div class="space-between-row"><b>${title}</b><span id="live-${k}-val">—</span></div><canvas id="live-${k}"></canvas></div>`).join("")}</div>`;
 }
 
-function drawSpark(id, data, max, color) {
+function levelColor(v, base) {
+  return v >= CRIT ? "#e5484d" : v >= WARN ? "#f5a524" : base;
+}
+
+function drawSpark(id, data, base) {
   const c = document.getElementById(id);
   if (!c) return;
   const w = (c.width = c.clientWidth || 300);
-  const h = (c.height = 70);
+  const h = (c.height = 84);
   const g = c.getContext("2d");
+  const padL = 30, padR = 4, padT = 4, padB = 14;
+  const pw = w - padL - padR, ph = h - padT - padB;
+  const txt = getComputedStyle(document.body).color;
+  const yOf = (v) => padT + ph - (Math.min(100, Math.max(0, v)) / 100) * ph;
   g.clearRect(0, 0, w, h);
-  g.strokeStyle = "rgba(127,127,127,0.35)";
-  g.strokeRect(0.5, 0.5, w - 1, h - 1);
+  g.font = "10px Segoe UI, sans-serif";
+  g.fillStyle = txt;
+  g.strokeStyle = txt;
+  g.lineWidth = 1;
+  g.textAlign = "right";
+  g.textBaseline = "middle";
+  [0, 50, 100].forEach((v) => {
+    g.globalAlpha = 0.22;
+    g.beginPath();
+    g.moveTo(padL, yOf(v) + 0.5);
+    g.lineTo(w - padR, yOf(v) + 0.5);
+    g.stroke();
+    g.globalAlpha = 0.75;
+    g.fillText(v + "%", padL - 4, yOf(v));
+  });
+  g.textBaseline = "top";
+  g.textAlign = "left";
+  g.fillText("60s", padL, h - padB + 3);
+  g.textAlign = "right";
+  g.fillText("now", w - padR, h - padB + 3);
+  g.globalAlpha = 1;
   if (data.length < 2) return;
-  const step = w / 59;
-  const pts = data.map((v, i) => [
-    w - (data.length - 1 - i) * step,
-    h - 4 - (Math.min(max, Math.max(0, v)) / max) * (h - 8),
-  ]);
+  const step = pw / 59;
+  const pts = data.map((v, i) => [w - padR - (data.length - 1 - i) * step, yOf(v), v]);
+  const last = pts[pts.length - 1];
   g.beginPath();
   pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
-  g.strokeStyle = color;
-  g.lineWidth = 2;
-  g.stroke();
-  g.lineTo(pts[pts.length - 1][0], h);
-  g.lineTo(pts[0][0], h);
+  g.lineTo(last[0], yOf(0));
+  g.lineTo(pts[0][0], yOf(0));
   g.closePath();
-  g.globalAlpha = 0.18;
-  g.fillStyle = color;
+  g.globalAlpha = 0.16;
+  g.fillStyle = levelColor(last[2], base);
   g.fill();
   g.globalAlpha = 1;
+  g.lineWidth = 2;
+  for (let i = 1; i < pts.length; i++) {
+    g.beginPath();
+    g.moveTo(pts[i - 1][0], pts[i - 1][1]);
+    g.lineTo(pts[i][0], pts[i][1]);
+    g.strokeStyle = levelColor(pts[i][2], base);
+    g.stroke();
+  }
 }
 
 function drawLive() {
-  drawSpark("live-cpu", liveHist.cpu, Math.max(10, ...liveHist.cpu), "#3a7bd5");
-  drawSpark("live-ram", liveHist.ram, 100, "#2e9e5b");
+  LIVE_TILES.forEach(([k, , base]) => drawSpark("live-" + k, liveHist[k], base));
   if (!liveLast) return;
   const d = liveLast;
-  const cv = $("#live-cpu-val");
-  const rv = $("#live-ram-val");
-  if (cv) cv.textContent = `host ${d.host_cpu_percent}% · containers ${d.container_cpu_percent}%`;
-  if (rv) rv.textContent = `${bytes(d.host_memory_used_bytes)} / ${bytes(d.host_memory_total_bytes)} · containers ${bytes(d.container_memory_bytes)}`;
+  const set = (k, text) => {
+    const el = document.getElementById("live-" + k + "-val");
+    if (el) el.textContent = text;
+  };
+  set("cpuH", d.host_cpu_percent + "%");
+  set("cpuC", d.container_cpu_percent + "%");
+  set("ramH", bytes(d.host_memory_used_bytes) + " / " + bytes(d.host_memory_total_bytes));
+  set("ramC", bytes(d.container_memory_bytes));
 }
 
 async function liveTick() {
@@ -430,10 +466,12 @@ async function liveTick() {
     if (!r.ok) return;
     const d = await r.json();
     liveLast = d;
-    liveHist.cpu.push(d.host_cpu_percent);
-    liveHist.ram.push((d.host_memory_used_bytes / (d.host_memory_total_bytes || 1)) * 100);
-    if (liveHist.cpu.length > 60) liveHist.cpu.shift();
-    if (liveHist.ram.length > 60) liveHist.ram.shift();
+    const total = d.host_memory_total_bytes || 1;
+    liveHist.cpuH.push(d.host_cpu_percent || 0);
+    liveHist.cpuC.push(d.container_cpu_percent || 0);
+    liveHist.ramH.push((d.host_memory_used_bytes / total) * 100);
+    liveHist.ramC.push(((d.container_memory_bytes || 0) / total) * 100);
+    Object.values(liveHist).forEach((a) => { if (a.length > 60) a.shift(); });
     drawLive();
   } catch (_) {}
 }
@@ -451,7 +489,7 @@ async function updateHealth() {
     $("#health").innerHTML =
       '<span class="dot on"></span>vcontainer: online<br>' +
       [["namespaces", "namespaces"], ["cgroups_v2", "cgroups v2"], ["overlayfs", "overlayfs"], ["network_tools", "network"]]
-        .map(([k, l]) => (caps[k] ? '<span class="ok">✓</span>' : '<span class="bad">✗</span>') + l)
+        .map(([k, l]) => l + (caps[k] ? '<span class="ok" style="font-size: 10px; opacity: 0.5; margin-left: 6px;">✓</span>' : '<span class="bad" style="font-size: 10px; opacity: 0.5; margin-left: 6px;">✗</span>'))
         .join("<br>");
   } catch (_) {
     $("#health").innerHTML = '<span class="dot off"></span>vcontainer: offline';
@@ -471,7 +509,7 @@ async function render() {
     else {
       await renderHome();
       $("#content").insertAdjacentHTML("afterbegin", quickStartHtml());
-      const statsRow = document.querySelector(".resource-statistics");
+      const statsRow = document.querySelector(".container-summary");
       if (statsRow) statsRow.insertAdjacentHTML("afterend", liveHtml());
       else $("#content").insertAdjacentHTML("beforeend", liveHtml());
       drawLive();
@@ -605,6 +643,15 @@ async function loadDetails(name, request) {
     </dl></div></div>
     <div class="card"><h3>Logs</h3><pre>${esc(logs.output || logs.logs || "No output")}</pre></div>
     <div class="card"><h3>Processes</h3><pre>${esc(JSON.stringify(processes.processes || [], null, 2))}</pre></div>`;
+  const row = $("#detail-title").parentElement;
+  let box = row.querySelector(".detail-actions");
+  if (!box) {
+    box = document.createElement("div");
+    box.className = "detail-actions";
+    row.appendChild(box);
+  }
+  const live = container.status === "running";
+  box.innerHTML = `<button data-detail-action="${live ? "stop" : "start"}" data-name="${esc(name)}">${live ? "Stop" : "Start"}</button><button class="danger" data-detail-action="delete" data-name="${esc(name)}">Delete</button>`;
 }
 
 function openPullImageDialog() {
@@ -633,6 +680,7 @@ document.addEventListener("click", async (event) => {
     if (view.disabled) return;
     const restoreButton = setButtonLoading(view);
     activeView = view.dataset.view;
+    sessionStorage.setItem("activeView", activeView);
     try {
       await render();
     } finally {
@@ -949,3 +997,25 @@ window.killServer = async function () {
   try { await fetch("/killserver", { method: "POST" }); } catch (_) {}
   document.body.innerHTML = '<h2 style="text-align:center;margin-top:50px">Server killed. Restart: cd ~/vcontainer and run the nohup start command.</h2>';
 };
+
+
+document.addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-detail-action]");
+  if (!b) return;
+  const name = b.dataset.name;
+  const act = b.dataset.detailAction;
+  if (act === "delete" && !confirm("Delete " + name + "?")) return;
+  b.disabled = true;
+  try {
+    const path = "/containers/" + encode(name);
+    if (act === "stop") await api(path + "/stop", { method: "POST" });
+    else if (act === "start") await api(path, { method: "POST" });
+    else await api(path, { method: "DELETE" });
+    if (act === "delete") $("#details").close();
+    else await showDetails(name);
+    render();
+  } catch (err) {
+    toast(err.message, true);
+    b.disabled = false;
+  }
+});
