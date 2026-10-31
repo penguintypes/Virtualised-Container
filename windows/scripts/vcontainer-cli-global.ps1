@@ -22,9 +22,9 @@ if (-not $alreadyInstalled) {
         ((@($entries) + $installDirectory) -join ";"),
         "User"
     )
-    Write-Host "Added Vcontainer to the user PATH."
+    Write-Host "Added vContainer to the user PATH."
 } else {
-    Write-Host "Vcontainer is already in the user PATH."
+    Write-Host "vContainer is already in the user PATH."
 }
 
 Write-Host "Open a new terminal, then run: vcontainer ps"
