@@ -167,7 +167,7 @@ try {
     $httpAverage = if ($httpTimes.Count) { [Math]::Round(($httpTimes | Measure-Object -Average).Average, 2) } else { $null }
 
     $report = @"
-# Vcontainer lightweight performance report
+# vContainer lightweight performance report
 
 Generated: $(Get-Date -Format o)
 
@@ -204,10 +204,10 @@ Generated: $(Get-Date -Format o)
 
 ## Interpretation
 
-The API-service value isolates Vcontainer's always-running control-plane cost.
+The API-service value isolates vContainer's always-running control-plane cost.
 The total WSL value also includes the Linux kernel, filesystem cache, systemd,
 the four-container demo stack, and other WSL processes, so it must not be
-reported as Vcontainer-only memory. The five-container cgroup total is the most
+reported as vContainer-only memory. The five-container cgroup total is the most
 useful measurement of incremental idle workload memory.
 "@
 
