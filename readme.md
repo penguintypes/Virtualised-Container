@@ -43,17 +43,17 @@ Browser :8080 -> backend/api.py -> backend/engine.py
 ## Layout
 
 ```text
-backend/    api.py, engine.py, core.py, live.py
+backend/         api.py, engine.py, core.py, live.py
 backend/runtime/ C engine and Bash scripts (deployed to /usr/local/libexec/vcontainer)
 backend/samples/ blog, runner, blogdrop
 backend/tests/   unit, REST and integration tests
-gui/        dashboard (HTML/CSS/JS)
-docs/       architecture overview and test cases
-windows/    machine/ and scripts/ helpers
-root        install.sh, start.sh, install.ps1, install.nsi, var/ (runtime state)
+gui/             dashboard (HTML/CSS/JS)
+docs/            architecture overview and test cases
+windows/         machine/ and scripts/ helpers
+root             install.sh, start.sh, install.ps1, install.nsi, var/ (runtime state)
 ```
 
-Changes are logged in `CHANGE.md`.
+Changes are logged in `change.md`.
 
 ## Dashboard
 
