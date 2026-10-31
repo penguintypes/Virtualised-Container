@@ -477,9 +477,9 @@ async function liveTick() {
 }
 setInterval(liveTick, 1000);
 
-const QUICK = [["blog", "8081:8081"], ["runner", "8082:8082"]];
+const QUICK = [["blog", "8081:8081", "Blog"], ["runner", "8082:8082", "Runner"]];
 function quickStartHtml() {
-  return `<div class="card"><b>Quick start</b> ${QUICK.map(([n, p]) => `<button data-action="quick" data-img="${n}" data-port="${p}">Run ${n}</button>`).join(" ")} <button id="launch-blogdrop" onclick="launchBlogDrop()">Launch BlogDrop</button></div>`;
+  return `<div class="card"><b>Quick start</b> ${QUICK.map(([n, p, l]) => `<button data-action="quick" data-img="${n}" data-port="${p}">Run ${l}</button>`).join(" ")} <button id="launch-blogdrop" onclick="launchBlogDrop()">Launch BlogDrop</button></div>`;
 }
 
 async function updateHealth() {
@@ -487,16 +487,17 @@ async function updateHealth() {
     const h = await api("/health");
     const caps = h.capabilities || {};
     $("#health").innerHTML =
-      '<span class="dot on"></span>vcontainer: online<br>' +
+      '<span class="dot on"></span>vContainer: online<br>' +
       [["namespaces", "namespaces"], ["cgroups_v2", "cgroups v2"], ["overlayfs", "overlayfs"], ["network_tools", "network"]]
         .map(([k, l]) => l + (caps[k] ? '<span class="ok" style="font-size: 10px; opacity: 0.5; margin-left: 6px;">✓</span>' : '<span class="bad" style="font-size: 10px; opacity: 0.5; margin-left: 6px;">✗</span>'))
         .join("<br>");
   } catch (_) {
-    $("#health").innerHTML = '<span class="dot off"></span>vcontainer: offline';
+    $("#health").innerHTML = '<span class="dot off"></span>vContainer: offline';
   }
 }
 
 async function render() {
+  if (window.__hold) { refreshTimer = setTimeout(render, 1000); return; }
   updateHealth();
   clearTimeout(refreshTimer);
   document.querySelectorAll("[data-view]").forEach((button) => {
@@ -701,7 +702,7 @@ document.addEventListener("click", async (event) => {
     if (button.dataset.action === "refresh") await render();
     else if (button.dataset.action === "run") await openRunDialog();
     else if (button.dataset.action === "killall") { if (confirm("Delete ALL containers?")) await killAllContainers(); }
-    else if (button.dataset.action === "killserver") { if (confirm("Kill the vcontainer server?\nThe dashboard will stop and must be restarted from the terminal.")) await killServer(); }
+    else if (button.dataset.action === "killserver") { if (confirm("Kill the vContainer server?\nThe dashboard will stop and must be restarted from the terminal.")) await killServer(); }
     else if (button.dataset.action === "details") await showDetails(name);
     else if (button.dataset.action === "resources") {
       $("#resource-name").value = name;
@@ -942,7 +943,7 @@ setTheme(initialTheme);
 window.launchBlogDrop = async function() {
   const btn = document.getElementById("launch-blogdrop");
   if(!btn) return;
-  btn.disabled = true; btn.textContent = "Launching...";
+  btn.disabled = true; btn.textContent = "Launching..."; window.__hold = true;
   
   const doReq = async (p) => {
     const r = await fetch("/containers", { 
@@ -955,14 +956,15 @@ window.launchBlogDrop = async function() {
 
   try {
     await doReq({ name: "blogdrop-db", image: "mysql", command: ["docker-entrypoint.sh", "mysqld"], memory: "1G", pids: 256, ip: "10.88.0.30", env: ["MYSQL_ROOT_PASSWORD=change-root-password", "MYSQL_DATABASE=blogdrop_db", "MYSQL_USER=blogdrop", "MYSQL_PASSWORD=change-database-password"], volumes: ["blogdrop-db:/var/lib/mysql", "blogdrop-db-init:/docker-entrypoint-initdb.d"], network: "bridge" });
-    await doReq({ name: "blogdrop-backend", image: "node", command: ["sh", "-c", "cd /app && npm start"], memory: "500M", pids: 256, ip: "10.88.0.31", env: ["DB_HOST=10.88.0.30", "DB_USER=blogdrop", "DB_PASSWORD=change-database-password", "DB_NAME=blogdrop_db", "PORT=3000", "SESSION_SECRET=blogdrop-demo-session-secret-change-me", "ADMIN_EMAIL=test@mail.com"], volumes: ["blogdrop-backend:/app"], network: "bridge" });
     await doReq({ name: "blogdrop-frontend", image: "nginx", command: ["nginx", "-g", "daemon off;"], memory: "250M", pids: 256, ip: "10.88.0.32", volumes: ["blogdrop-frontend:/usr/share/nginx/html"], network: "bridge" });
     await doReq({ name: "blogdrop-gateway", image: "nginx", command: ["nginx", "-g", "daemon off;"], memory: "250M", pids: 256, ip: "10.88.0.33", ports: ["8085:80"], volumes: ["blogdrop-nginx:/etc/nginx/conf.d"], network: "bridge" });
-    toast("BlogDrop launched"); fastRender(); ensureBlogDropUp().then(() => render()).catch(() => {});
+    await new Promise(r => setTimeout(r, 4000));
+    await doReq({ name: "blogdrop-backend", image: "node", command: ["sh", "-c", "cd /app && npm start"], memory: "500M", pids: 256, ip: "10.88.0.31", env: ["DB_HOST=10.88.0.30", "DB_USER=blogdrop", "DB_PASSWORD=change-database-password", "DB_NAME=blogdrop_db", "PORT=3000", "SESSION_SECRET=blogdrop-demo-session-secret-change-me", "ADMIN_EMAIL=test@mail.com"], volumes: ["blogdrop-backend:/app"], network: "bridge" });
+    window.__hold = false; toast("BlogDrop launched"); fastRender(); ensureBlogDropUp().then(() => render()).catch(() => {});
   } catch (err) {
     toast("Launch failed: " + err.message, true);
   } finally {
-    btn.disabled = false; btn.textContent = "Launch BlogDrop";
+    window.__hold = false; btn.disabled = false; btn.textContent = "Launch BlogDrop";
     
   }
 };
