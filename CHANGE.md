@@ -131,3 +131,9 @@ The WSL installer, PowerShell/NSIS launchers, verification checklist, no-root un
 
 ## 2026-10-31 15:11 - change10
 - fix: GET /containers/{name}/metrics returns zeroed metrics instead of a 400 when the container dies during inspect (mountinfo read race)
+
+## 2026-10-31 15:58 - change11
+- feat: dashboard Home shows 4 number tiles and 4 labelled graphs (CPU/RAM, host/containers) with orange and red thresholds
+- feat: container details pane has Stop/Start and Delete buttons
+- fix: container grid is 3 per row, 2 at half width; Images has a Created column; roomier Images and Volumes tables
+- fix: dashboard active view persists across hard refresh; adjusted button spacing and health tick styling
