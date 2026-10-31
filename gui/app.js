@@ -13,6 +13,7 @@ const esc = (value) =>
   );
 const encode = encodeURIComponent;
 let activeView = "home";
+let skipMetrics = false;
 let refreshTimer = null;
 let inspectedVolume = null;
 
@@ -142,7 +143,9 @@ function portLinks(container) {
 }
 
 async function getContainers() {
-  return asList(await api("/containers"), "containers");
+  const list = asList(await api("/containers"), "containers");
+  window.__lastContainers = list;
+  return list;
 }
 
 function ratio(value, limit) {
@@ -209,9 +212,9 @@ async function renderHome() {
   const metrics = {};
   await Promise.all(
     runningContainers.map(async (container) => {
-      metrics[container.name] = await api(
+      metrics[container.name] = await (skipMetrics ? null : api(
         `/containers/${encode(container.name)}/metrics`,
-      ).catch(() => null);
+      ).catch(() => null));
     }),
   );
   const activeMetrics = Object.values(metrics).filter(Boolean);
@@ -253,9 +256,9 @@ async function renderContainers() {
     containers
       .filter((item) => item.status === "running")
       .map(async (container) => {
-        metrics[container.name] = await api(
+        metrics[container.name] = await (skipMetrics ? null : api(
           `/containers/${encode(container.name)}/metrics`,
-        ).catch(() => null);
+        ).catch(() => null));
       }),
   );
   $("#title").textContent = "Containers";
@@ -474,6 +477,8 @@ async function render() {
       drawLive();
     }
     $("#banner").classList.add("is-hidden");
+    if (activeView === "home" || activeView === "containers")
+      $("#actions").insertAdjacentHTML("beforeend", '<button class="danger" data-action="killall">Kill all containers</button> <button class="danger" data-action="killserver">Kill server</button>');
   } catch (error) {
     console.error("Dashboard render failed:", error);
     $("#banner").textContent = `Dashboard error: ${error.message}`;
@@ -598,7 +603,7 @@ async function loadDetails(name, request) {
       <dt>CPU</dt><dd>${esc(metrics?.cpu_percent ?? "—")}%</dd><dt>Processes</dt><dd>${esc(metrics?.process_count ?? "—")}</dd>
       <dt>Network RX/TX</dt><dd>${metrics ? `${bytes(metrics.network_rx_bytes)} / ${bytes(metrics.network_tx_bytes)}` : "—"}</dd>
     </dl></div></div>
-    <div class="card"><h3>Logs</h3><pre>${esc(logs.output || "No output")}</pre></div>
+    <div class="card"><h3>Logs</h3><pre>${esc(logs.output || logs.logs || "No output")}</pre></div>
     <div class="card"><h3>Processes</h3><pre>${esc(JSON.stringify(processes.processes || [], null, 2))}</pre></div>`;
 }
 
@@ -647,6 +652,8 @@ document.addEventListener("click", async (event) => {
   try {
     if (button.dataset.action === "refresh") await render();
     else if (button.dataset.action === "run") await openRunDialog();
+    else if (button.dataset.action === "killall") { if (confirm("Delete ALL containers?")) await killAllContainers(); }
+    else if (button.dataset.action === "killserver") { if (confirm("Kill the vcontainer server?\nThe dashboard will stop and must be restarted from the terminal.")) await killServer(); }
     else if (button.dataset.action === "details") await showDetails(name);
     else if (button.dataset.action === "resources") {
       $("#resource-name").value = name;
@@ -673,7 +680,7 @@ document.addEventListener("click", async (event) => {
       await api(`/images/${encode(name)}`, { method: "DELETE" });
     else if (button.dataset.action === "quick") {
       const cp = button.dataset.port.split(":")[1];
-      const existing = await (await fetch("/containers")).json();
+      const existing = window.__lastContainers || await (await fetch("/containers")).json();
       const used = new Set(
         (Array.isArray(existing) ? existing : existing.containers || []).flatMap((c) =>
           (c.ports || []).map((m) =>
@@ -695,6 +702,9 @@ document.addEventListener("click", async (event) => {
       });
       if (!r.ok) throw new Error((await r.json()).error || "start failed");
       toast("Started " + button.dataset.img + " on port " + hp);
+      window.__lastContainers = [...(Array.isArray(existing) ? existing : existing.containers || []), { ports: [{ host_port: hp }] }];
+      fastRender();
+      return;
     } else if (button.dataset.action === "pull") {
       openPullImageDialog();
       return;
@@ -847,16 +857,16 @@ $("#resource-form").addEventListener("submit", async (event) => {
     restoreButton();
   }
 });
-api("/health")
-  .then((health) => {
-    updateHealth();
-    render();
-  })
-  .catch((error) => {
-    $("#health").textContent = "● backend unavailable";
-    $("#banner").textContent = error.message;
-    $("#banner").classList.remove("is-hidden");
-  });
+(function boot() {
+  api("/health")
+    .then(() => { updateHealth(); render(); })
+    .catch((error) => {
+      $("#health").textContent = "backend unavailable";
+      $("#banner").textContent = "Waiting for backend... " + error.message;
+      $("#banner").classList.remove("is-hidden");
+      setTimeout(boot, 2000);
+    });
+})();
 
 function setTheme(theme) {
   const dark = theme === "dark";
@@ -897,14 +907,45 @@ window.launchBlogDrop = async function() {
 
   try {
     await doReq({ name: "blogdrop-db", image: "mysql", command: ["docker-entrypoint.sh", "mysqld"], memory: "1G", pids: 256, ip: "10.88.0.30", env: ["MYSQL_ROOT_PASSWORD=change-root-password", "MYSQL_DATABASE=blogdrop_db", "MYSQL_USER=blogdrop", "MYSQL_PASSWORD=change-database-password"], volumes: ["blogdrop-db:/var/lib/mysql", "blogdrop-db-init:/docker-entrypoint-initdb.d"], network: "bridge" });
-    await doReq({ name: "blogdrop-backend", image: "node", command: ["sh", "-c", "cd /app && npm start"], memory: "500M", pids: 256, ip: "10.88.0.31", env: ["DB_HOST=10.88.0.30", "DB_USER=blogdrop", "DB_PASSWORD=change-database-password", "DB_NAME=blogdrop_db", "PORT=3000"], volumes: ["blogdrop-backend:/app"], network: "bridge" });
+    await doReq({ name: "blogdrop-backend", image: "node", command: ["sh", "-c", "cd /app && npm start"], memory: "500M", pids: 256, ip: "10.88.0.31", env: ["DB_HOST=10.88.0.30", "DB_USER=blogdrop", "DB_PASSWORD=change-database-password", "DB_NAME=blogdrop_db", "PORT=3000", "SESSION_SECRET=blogdrop-demo-session-secret-change-me", "ADMIN_EMAIL=test@mail.com"], volumes: ["blogdrop-backend:/app"], network: "bridge" });
     await doReq({ name: "blogdrop-frontend", image: "nginx", command: ["nginx", "-g", "daemon off;"], memory: "250M", pids: 256, ip: "10.88.0.32", volumes: ["blogdrop-frontend:/usr/share/nginx/html"], network: "bridge" });
     await doReq({ name: "blogdrop-gateway", image: "nginx", command: ["nginx", "-g", "daemon off;"], memory: "250M", pids: 256, ip: "10.88.0.33", ports: ["8085:80"], volumes: ["blogdrop-nginx:/etc/nginx/conf.d"], network: "bridge" });
-    alert("BlogDrop launched! Gateway available on port 8085.");
+    toast("BlogDrop launched"); fastRender(); ensureBlogDropUp().then(() => render()).catch(() => {});
   } catch (err) {
-    alert("Launch failed: " + err.message);
+    toast("Launch failed: " + err.message, true);
   } finally {
     btn.disabled = false; btn.textContent = "Launch BlogDrop";
-    if(typeof loadContainers === 'function') loadContainers();
+    
   }
+};
+
+
+
+
+async function fastRender() {
+  skipMetrics = true;
+  try { await render(); } finally { skipMetrics = false; }
+  setTimeout(render, 1500);
+}
+
+async function ensureBlogDropUp() {
+  await new Promise((r) => setTimeout(r, 4000));
+  const list = asList(await api("/containers"), "containers");
+  for (const c of list) {
+    if (c.name.startsWith("blogdrop-") && c.status !== "running")
+      await api(`/containers/${encode(c.name)}/start`, { method: "POST" }).catch(() => {});
+  }
+}
+
+window.killAllContainers = async function () {
+  const list = asList(await api("/containers"), "containers");
+  for (const c of list)
+    await api(`/containers/${encode(c.name)}`, { method: "DELETE" }).catch(() => {});
+  toast("All containers deleted");
+  render();
+};
+
+window.killServer = async function () {
+  try { await fetch("/killserver", { method: "POST" }); } catch (_) {}
+  document.body.innerHTML = '<h2 style="text-align:center;margin-top:50px">Server killed. Restart: cd ~/vcontainer and run the nohup start command.</h2>';
 };
