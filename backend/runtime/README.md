@@ -1,87 +1,35 @@
-# Vcontainer for Windows with WSL 2
+# vContainer runtime
 
-The PowerShell launcher runs the Linux C engine inside WSL 2. This directory
-contains its own sources and helpers. Generated ARM binaries are not included.
+The C and Bash engine behind vContainer. It creates the namespaces, cgroup v2 limits, overlayfs mounts, bridge networking and seccomp filter for each container. The Python API in `backend/` drives it through `sudo -n`.
 
 ## Prerequisites
 
-- Ubuntu on WSL 2, with cgroup v2 and OverlayFS available.
-- A normal Linux user with sudo access and subordinate UID/GID ranges.
-  The default launcher user is `vcdev`.
-- Inside Ubuntu, install:
+- Ubuntu on WSL2 (or Linux) with cgroup v2 and OverlayFS.
+- A normal user with sudo and subordinate UID/GID ranges.
+- Packages: `build-essential libseccomp-dev skopeo umoci iproute2 iptables util-linux python3 curl socat` (installed by `install.sh`).
+
+## Layout
+
+- `run_container.sh`: entry point called by `backend/engine.py`.
+- `build_helper.sh`: constrained wrapper for image build tasks; sources must be under `/var/lib/vcontainer/`.
+- `src/`: C sources and helper scripts (`cgroup.sh`, `image.sh`, `network.sh`).
+- `include/`: shared headers.
+- `tests/`: C test programs.
+- `examples/`: runnable examples.
+- `build/`: generated binaries, not tracked in git.
+- `vcontainer.ps1`, `vcontainer.py`: optional Windows launchers that forward arguments to `run_container.sh` inside WSL (`VCONTAINER_WSL_DISTRO`, `VCONTAINER_WSL_USER`).
+
+## Build and deploy
+
+`install.sh` compiles the engine with `make` and installs the scripts root-owned into `/usr/local/libexec/vcontainer/`. The deployed copies are the ones that run, so after editing a script run:
 
 ```bash
-sudo apt update
-sudo apt install -y build-essential libseccomp-dev skopeo umoci iproute2 iptables util-linux
+sudo install -o root -g root -m 755 backend/runtime/<file> /usr/local/libexec/vcontainer/<file>
 ```
 
-Check the user's ranges with `grep '^vcdev:' /etc/subuid /etc/subgid`.
-The current engine expects execution through sudo by that normal user.
+## Storage and networking
 
-## From Windows PowerShell
-
-Open PowerShell in this directory and run:
-
-```powershell
-.\vcontainer.ps1 list
-.\vcontainer.ps1 run alpine --name windows-smoke -- /bin/echo "Hello from Windows"
-.\vcontainer.ps1 inspect windows-smoke
-```
-
-The launcher converts its adjacent Bash script's Windows path using `wslpath`.
-No separate Ubuntu source copy is required. The Bash wrapper stages sources and
-helpers in `/tmp/vcontainer-work`, compiles there, and runs through sudo.
-Enter the Linux user's password when prompted.
-
-To select another installation or user:
-
-```powershell
-$env:VCONTAINER_WSL_DISTRO = 'Ubuntu'
-$env:VCONTAINER_WSL_USER = 'vcdev'
-```
-
-If PowerShell blocks the script, a policy change for the current session only is:
-
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
-```
-
-## From Ubuntu
-
-Run `bash /path/to/Vcontainer\(win\)/run_container.sh ...` as the normal user.
-The script resolves its own source directory; do not run the Lima wrapper.
-
-## Lifecycle and volumes
-
-```powershell
-.\vcontainer.ps1 run alpine --name background --detach -- /bin/sh -c "echo started; sleep 300"
-.\vcontainer.ps1 ps
-.\vcontainer.ps1 logs background
-.\vcontainer.ps1 exec background -- /bin/echo "Exec works"
-.\vcontainer.ps1 stop background
-.\vcontainer.ps1 rm background
-
-.\vcontainer.ps1 volume create app-data
-.\vcontainer.ps1 run alpine --name volume-test --volume app-data:/data -- /bin/sh -c "echo persisted > /data/example.txt"
-```
-
-Named volume data and container metadata live under `/var/lib/vcontainer` in
-Ubuntu. Images live under `/tmp/vcontainer-images` and OCI downloads under
-`/tmp/vcontainer-oci`; these temporary stores may be cleared by Linux.
-
-Bridge networking is optional: add `--network bridge --ip 10.88.0.2` before
-the command separator. Windows access to container services is not configured
-by this wrapper; published ports remain future work.
-
-## WSL changes
-
-- Management commands execute locally in WSL instead of using Lima.
-- Arguments after `--` are preserved as container command arguments.
-- Image and container names reject `.` and `..` in management paths.
-- Shell validation runs inside the rootfs, supporting Alpine's absolute symlink.
-- The child closes the inherited synchronization pipe write end.
-- The child creates its cgroup namespace after parent attachment.
-
-This remains an experimental runtime. Detached startup does not yet confirm
-successful command execution to the parent. Validate lifecycle and networking
-in WSL before relying on them.
+- Images: `/var/lib/vcontainer/images/<name>`; containers: `/var/lib/vcontainer/containers/<name>`.
+- Named volumes: `/var/lib/vcontainer/volumes/<name>/_data`.
+- Bridge `vcbr0` on `10.88.0.1/24`; published ports are forwarded to the container IP with `socat`.
+- Seccomp is on by default.
