@@ -44,9 +44,9 @@ Browser :8080 -> backend/api.py -> backend/engine.py
 
 ```text
 backend/    api.py, engine.py, core.py, live.py
-  runtime/  C engine and Bash scripts (deployed to /usr/local/libexec/vcontainer)
-  samples/  blog, runner, blogdrop
-  tests/    unit, REST and integration tests
+backend/runtime/ C engine and Bash scripts (deployed to /usr/local/libexec/vcontainer)
+backend/samples/ blog, runner, blogdrop
+backend/tests/   unit, REST and integration tests
 gui/        dashboard (HTML/CSS/JS)
 docs/       architecture overview and test cases
 windows/    machine/ and scripts/ helpers
