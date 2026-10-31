@@ -5,5 +5,9 @@ __pycache__/
 *.pyc
 verify.log
 install.exe
-engine/build/vcontainer
+backend/runtime/build/vcontainer
 vcontainer_source_dump.txt
+*.bak*
+node_modules/
+*.tgz
+patches/
