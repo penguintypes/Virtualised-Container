@@ -144,7 +144,6 @@ def run(name, image, command=None, memory=None, cpus=None, pids=None, port=None,
     try: remove(name)
     except Exception: pass
     import shlex
-    import shlex
     if isinstance(command, str): command = shlex.split(command)
     if command is None:
         command = meta.get("cmd")
@@ -206,9 +205,6 @@ def remove(name):
     try: _call("rm", name)
     except Exception: pass
     data = _load(); data.pop(name, None); _save(data)
-
-def stop(name):
-    _call("stop", name)
 
 def stop(name):
     _call("stop", name)
