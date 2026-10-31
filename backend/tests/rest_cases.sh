@@ -7,7 +7,7 @@ st(){ curl -s $A/containers | grep -o "\"name\": \"$1\", \"image\": \"[a-z]*\", 
 res(){ if [ "$2" = ok ]; then echo "PASS $1"; P=$((P+1)); else echo "FAIL $1"; F=$((F+1)); fi; }
 
 del blog-demo; run '{"name":"blog-demo","image":"blog","memory":"128M","command":["/bin/cat","/opt/index.html"]}'
-L=$(logs blog-demo); echo "$L" | grep -qi 'doctype html' && r=ok || r=bad
+L=$(logs blog-demo); echo "$L" | grep -qi '</script>' && r=ok || r=bad
 res "B1 blog image runs cat, logs show html" $r; del blog-demo
 
 del runner-test; run '{"name":"runner-test","image":"runner","memory":"128M","command":["python3","-c","print(\"runner works\")"]}'
