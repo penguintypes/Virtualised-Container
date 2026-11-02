@@ -1,0 +1,86 @@
+{
+  "inputs": {
+    "ADMIN_EMAIL": {
+      "label": "Admin Email",
+      "default": "test@mail.com",
+      "pattern": "^[^@]+@[^@]+\\.[^@]+$"
+    },
+    "DB_PASSWORD": {
+      "label": "Database Password",
+      "generate": "random_string_16"
+    },
+    "SESSION_SECRET": {
+      "label": "Session Secret",
+      "generate": "random_string_32"
+    },
+    "GATEWAY_PORT": {
+      "label": "Gateway Port",
+      "default": "8085",
+      "pattern": "^[0-9]{2,5}$"
+    }
+  },
+  "services": [
+    {
+      "name": "blogdrop-db",
+      "image": "mysql",
+      "command": ["docker-entrypoint.sh", "mysqld"],
+      "memory": "1G",
+      "pids": 256,
+      "ip": "10.88.0.30",
+      "env": [
+        "MYSQL_ROOT_PASSWORD=change-root-password",
+        "MYSQL_DATABASE=blogdrop_db",
+        "MYSQL_USER=blogdrop",
+        "MYSQL_PASSWORD=${DB_PASSWORD}"
+      ],
+      "volumes": [
+        "blogdrop-db:/var/lib/mysql",
+        "blogdrop-db-init:/docker-entrypoint-initdb.d"
+      ],
+      "network": "bridge"
+    },
+    {
+      "name": "blogdrop-frontend",
+      "image": "nginx",
+      "command": ["nginx", "-g", "daemon off;"],
+      "memory": "250M",
+      "pids": 256,
+      "ip": "10.88.0.32",
+      "volumes": ["blogdrop-frontend:/usr/share/nginx/html"],
+      "network": "bridge",
+      "depends_on": ["blogdrop-db"]
+    },
+    {
+      "name": "blogdrop-backend",
+      "image": "node",
+      "command": ["sh", "-c", "cd /app && (test -d node_modules || npm install --omit=dev) && exec node server.js"],
+      "memory": "500M",
+      "pids": 256,
+      "ip": "10.88.0.31",
+      "env": [
+        "DB_HOST=10.88.0.30",
+        "DB_USER=blogdrop",
+        "DB_PASSWORD=${DB_PASSWORD}",
+        "DB_NAME=blogdrop_db",
+        "PORT=3000",
+        "SESSION_SECRET=${SESSION_SECRET}",
+        "ADMIN_EMAIL=${ADMIN_EMAIL}"
+      ],
+      "volumes": ["blogdrop-backend:/app"],
+      "network": "bridge",
+      "depends_on": ["blogdrop-db"]
+    },
+    {
+      "name": "blogdrop-gateway",
+      "image": "nginx",
+      "command": ["nginx", "-g", "daemon off;"],
+      "memory": "250M",
+      "pids": 256,
+      "ip": "10.88.0.33",
+      "ports": ["${GATEWAY_PORT}:80"],
+      "volumes": ["blogdrop-nginx:/etc/nginx/conf.d"],
+      "network": "bridge",
+      "depends_on": ["blogdrop-frontend", "blogdrop-backend"]
+    }
+  ]
+}
