@@ -32,6 +32,15 @@ sudo rm -rf /var/lib/vcontainer/samples
 sudo mkdir -p /var/lib/vcontainer/samples
 sudo cp -a "$root/backend/samples/blog" "$root/backend/samples/runner" /var/lib/vcontainer/samples/
 sudo chmod -R a+rX /var/lib/vcontainer/samples
+# seed blogdrop volumes
+seed() { v="/var/lib/vcontainer/volumes/$1/_data"; sudo mkdir -p "$v"; if [ -d "$2" ] && [ -z "$(sudo ls -A "$v")" ]; then sudo cp -a "$2"/. "$v"/; fi; }
+bd="$root/backend/samples/blogdrop"
+seed blogdrop-db ""
+seed blogdrop-db-init "$bd/db-init"
+seed blogdrop-frontend "$bd/frontend"
+seed blogdrop-nginx "$bd/nginx"
+seed blogdrop-backend "$bd/backend"
+# end seed
 PYTHONPATH="$root" python3 - <<'PY'
 import os
 from backend import engine
