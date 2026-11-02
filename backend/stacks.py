@@ -106,6 +106,13 @@ def up(name, template, user_inputs):
             if needs_recreate:
                 engine.remove(cname)
                 run_kwargs = {k: v for k, v in s.items() if k not in ("depends_on", "ready_log")}
+                if "env" in run_kwargs and isinstance(run_kwargs["env"], list):
+                    env_dict = {}
+                    for e in run_kwargs["env"]:
+                        if "=" in e:
+                            ek, ev = e.split("=", 1)
+                            env_dict[ek] = ev
+                    run_kwargs["env"] = env_dict
                 if "ports" in run_kwargs:
                     ports = run_kwargs.pop("ports")
                     if ports: run_kwargs["port"] = ports[0] if isinstance(ports, list) else ports
