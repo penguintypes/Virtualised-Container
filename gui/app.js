@@ -959,7 +959,7 @@ window.launchBlogDrop = async function() {
     await doReq({ name: "blogdrop-frontend", image: "nginx", command: ["nginx", "-g", "daemon off;"], memory: "250M", pids: 256, ip: "10.88.0.32", volumes: ["blogdrop-frontend:/usr/share/nginx/html"], network: "bridge" });
     await doReq({ name: "blogdrop-gateway", image: "nginx", command: ["nginx", "-g", "daemon off;"], memory: "250M", pids: 256, ip: "10.88.0.33", ports: ["8085:80"], volumes: ["blogdrop-nginx:/etc/nginx/conf.d"], network: "bridge" });
     await new Promise(r => setTimeout(r, 4000));
-    await doReq({ name: "blogdrop-backend", image: "node", command: ["sh", "-c", "cd /app && npm start"], memory: "500M", pids: 256, ip: "10.88.0.31", env: ["DB_HOST=10.88.0.30", "DB_USER=blogdrop", "DB_PASSWORD=change-database-password", "DB_NAME=blogdrop_db", "PORT=3000", "SESSION_SECRET=blogdrop-demo-session-secret-change-me", "ADMIN_EMAIL=test@mail.com"], volumes: ["blogdrop-backend:/app"], network: "bridge" });
+    await doReq({ name: "blogdrop-backend", image: "node", command: ["sh", "-c", "cd /app && (test -d node_modules || npm install --omit=dev) && exec node server.js"], memory: "500M", pids: 256, ip: "10.88.0.31", env: ["DB_HOST=10.88.0.30", "DB_USER=blogdrop", "DB_PASSWORD=change-database-password", "DB_NAME=blogdrop_db", "PORT=3000", "SESSION_SECRET=blogdrop-demo-session-secret-change-me", "ADMIN_EMAIL=test@mail.com"], volumes: ["blogdrop-backend:/app"], network: "bridge" });
     window.__hold = false; toast("BlogDrop launched"); fastRender(); ensureBlogDropUp().then(() => render()).catch(() => {});
   } catch (err) {
     toast("Launch failed: " + err.message, true);
