@@ -1,3 +1,7 @@
+try:
+    from . import stacks
+except ImportError:
+    import stacks
 import json
 import os
 import mimetypes
