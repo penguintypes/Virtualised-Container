@@ -57,7 +57,7 @@
       "command": [
         "sh",
         "-c",
-        "cd /app && (test -d node_modules || npm install --omit=dev) && exec node server.js"
+        "sleep 20 && cd /app && (test -d node_modules || npm install --omit=dev) && exec node server.js"
       ],
       "memory": "500M",
       "pids": 256,

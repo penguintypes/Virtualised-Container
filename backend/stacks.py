@@ -103,7 +103,7 @@ def up(name, template, user_inputs):
             
             c_status = engine_state.get(cname, {}).get("status")
             
-            if needs_recreate:
+            if needs_recreate or c_status != "running":
                 engine.remove(cname)
                 run_kwargs = {k: v for k, v in s.items() if k not in ("depends_on", "ready_log")}
                 if "env" in run_kwargs and isinstance(run_kwargs["env"], list):
@@ -118,9 +118,7 @@ def up(name, template, user_inputs):
                     if ports: run_kwargs["port"] = ports[0] if isinstance(ports, list) else ports
                 engine.run(**run_kwargs)
                 launched.append(cname)
-            elif c_status != "running":
-                engine._call("start", cname)
-                engine._record(cname, status="running")
+
     except Exception as e:
         for cname in launched:
             engine.remove(cname)
@@ -136,11 +134,8 @@ def down(name):
 
 def start(name):
     stack = get_stack(name)
-    if not stack:
-        return
-    for s in stack.get("services", []):
-        engine._call("start", s["name"])
-        engine._record(s["name"], status="running")
+    if stack:
+        up(name, stack, stack.get("inputs", {}))
 
 def stop(name):
     stack = get_stack(name)

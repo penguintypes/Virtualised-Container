@@ -211,7 +211,9 @@ case "$action" in
                     ;;
                 --env)
                     [ "$#" -ge 2 ] || { echo "--env requires KEY=VALUE" >&2; exit 2; }
-                    resolved_args+=("--env" "$2")
+                    env_key="${2%%=*}"
+                    env_val="${2#*=}"
+                    resolved_args+=("--setenv" "$env_key" "$env_val")
                     shift 2
                     ;;
                 --volume)
