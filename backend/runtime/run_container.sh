@@ -46,6 +46,8 @@ case "$action" in
             cd "$work"
             sudo bash ./image.sh pull "$2" "$3"
         ' vcontainer-pull "$project_dir" "$image" "$reference"
+        chmod 755 "/var/lib/vcontainer/images/$image"
+        chmod go+r "/var/lib/vcontainer/images/$image"/* 2>/dev/null || true
         exit 0
         ;;
     volume)
@@ -606,6 +608,8 @@ bash -c '
   if ! sudo chroot "$rootfs" /bin/sh -c "exit 0"; then
       echo "Image missing; pulling: $image"
       sudo ./image.sh pull "$image"
+      sudo chmod 755 "/var/lib/vcontainer/images/$image"
+      sudo chmod go+r "/var/lib/vcontainer/images/$image"/* 2>/dev/null || true
   fi
 
   if ! sudo chroot "$rootfs" /bin/sh -c "exit 0"; then
