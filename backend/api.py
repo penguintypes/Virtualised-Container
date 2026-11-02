@@ -135,7 +135,7 @@ class VcApiHandler(BaseHTTPRequestHandler):
             if parsed.path == "/images/build":
                 return self.respond_with_json(201, engine.build(req_data["file"], clean=req_data.get("clean", False), update=req_data.get("update", False)))
 
-            if parsed.path == "/compose/up":
+        if parsed.path == "/compose/up":
             try:
                 stacks.up(req_data.get("name"), req_data.get("template", {}), req_data.get("inputs", {}))
                 return self.respond_with_json(201, {"message": "stack up"})
@@ -145,7 +145,7 @@ class VcApiHandler(BaseHTTPRequestHandler):
             action = parsed.path.split("/")[-1]
             getattr(stacks, action)(req_data.get("name"))
             return self.respond_with_json(200, {"message": f"stack {action}"})
-        if parsed.path == "/images/pull":
+            if parsed.path == "/images/pull":
                 if "name" not in req_data:
                     return self.fail_out("image name required")
                 res = engine._call("pull", core.valid_name(req_data["name"]), req_data.get("reference", ""), timeout=300)
