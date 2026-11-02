@@ -26,6 +26,7 @@ if [ "$root" != "$target" ]; then mkdir -p "$target"; cp -a "$root"/. "$target"/
 if [ -t 0 ]; then read -r -p "Install personal-machine sudoers NOPASSWD rule for vcontainer? [y/N] " answer; elif [ -r /dev/tty ]; then read -r -p "Install personal-machine sudoers NOPASSWD rule for vcontainer? [y/N] " answer </dev/tty; else answer=${VC_SUDOERS:-N}; fi
 if [[ ${answer:-N} =~ ^[Yy]$ ]]; then echo "$user ALL=(root) NOPASSWD: /usr/local/libexec/vcontainer/run_container.sh, /usr/local/libexec/vcontainer/build_helper.sh" | sudo tee /etc/sudoers.d/vcontainer >/dev/null; sudo chmod 440 /etc/sudoers.d/vcontainer; fi
 if ! sudo test -d /var/lib/vcontainer/images/alpine/rootfs; then sudo "$root/backend/runtime/src/image.sh" pull alpine; fi
+if ! sudo test -d /var/lib/vcontainer/images/node/rootfs; then sudo "$root/backend/runtime/src/image.sh" pull node docker.io/library/node:slim; fi
 sudo chmod -R a+rX /var/lib/vcontainer/images
 echo '{"id":"alpine","name":"alpine","created":"2026-10-23T00:00:00Z","size":8427299,"cmd":["/bin/sh"],"env":{}}' | sudo tee /var/lib/vcontainer/images/alpine/meta.json > /dev/null
 sudo rm -rf /var/lib/vcontainer/samples
