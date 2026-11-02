@@ -209,6 +209,11 @@ case "$action" in
                     resolved_args+=("--ip" "$2")
                     shift 2
                     ;;
+                --env)
+                    [ "$#" -ge 2 ] || { echo "--env requires KEY=VALUE" >&2; exit 2; }
+                    resolved_args+=("--env" "$2")
+                    shift 2
+                    ;;
                 --volume)
                     [ "$#" -ge 2 ] || {
                         echo "--volume requires NAME:TARGET" >&2
