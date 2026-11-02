@@ -160,13 +160,17 @@ def run(name, image, command=None, memory=None, cpus=None, pids=None, port=None,
                 args += ["--volume", f"{v.get('name', '')}:{v.get('target', '')}"]
             else:
                 args += ["--volume", str(v)]
-    if env:
-        if isinstance(env, dict):
-            for k, v in env.items(): args += ["--env", f"{k}={v}"]
-        elif isinstance(env, list):
-            for e in env: args += ["--env", str(e)]
     if network == "bridge" and ip:
         args += ["--network", "bridge", "--ip", str(ip)]
+    
+    if env:
+        env_args = ["env"]
+        if isinstance(env, dict):
+            env_args.extend(f"{k}={v}" for k, v in env.items())
+        elif isinstance(env, list):
+            env_args.extend(str(e) for e in env)
+        command = env_args + command
+
     args += ["--"] + command
     output = _call(*args, timeout=60)
     return _record(name, id=name, name=name, image=image, status="running", pid=None, created=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), ports=[port] if port else [], command=command, output=output, memory=memory, cpus=cpus, pids=pids, volumes=volumes, env=env, network=network, ip=ip)

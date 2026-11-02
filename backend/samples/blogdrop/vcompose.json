@@ -7,11 +7,6 @@
     "SESSION_SECRET": {
       "label": "Session Secret",
       "generate": "random_string_32"
-    },
-    "GATEWAY_PORT": {
-      "label": "Gateway Port",
-      "default": "8085",
-      "pattern": "^[0-9]{2,5}$"
     }
   },
   "services": [
@@ -96,7 +91,7 @@
       "pids": 256,
       "ip": "10.88.0.33",
       "ports": [
-        "${GATEWAY_PORT}:80"
+        "8085:80"
       ],
       "volumes": [
         "blogdrop-nginx:/etc/nginx/conf.d"
