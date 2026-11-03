@@ -5,14 +5,11 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-
-# Works whether setup.py is in the outer or inner folder.
-PROJECT = ROOT if (ROOT / "api").is_dir() else ROOT / "Virtualised-Container-vcontainer-arm-_backend"
-'''if not (PROJECT / "api").is_dir():
-    PROJECT = ROOT / "Virtualised-Container-vcontainer-arm-_backend" '''
-
-API = PROJECT / "api"
-ENGINE = PROJECT / "Vcontainer(win)"
+PROJECT = ROOT
+API = PROJECT / "backend" / "api"
+CLIENT = PROJECT / "client"
+ENGINE = PROJECT / "backend" / "runtime"
+GUI = PROJECT / "gui"
 DISTRO = "Ubuntu"
 USER = "vcdev"
 
@@ -71,9 +68,10 @@ engine="$2"
 echo "Installing Linux dependencies..."
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    --no-install-recommends \
     build-essential libseccomp-dev \
     skopeo umoci iproute2 iptables util-linux socat \
-    python3 sudo uidmap
+    python3 sudo uidmap curl ca-certificates
 
 echo "Preparing development user..."
 if ! id "$user" >/dev/null 2>&1; then
@@ -145,7 +143,7 @@ echo "Linux setup complete."
 
 
 def setup_python():
-    print("Installing uv if needed...")
+    print("Preparing the Windows client...")
 
     uv_command = shutil.which("uv")
 
@@ -155,14 +153,7 @@ def setup_python():
         run(sys.executable, "-m", "pip", "install", "uv")
         uv = [sys.executable, "-m", "uv"]
 
-    # Dependencies come from api/pyproject.toml and uv.lock.
-    run(*uv, "sync", cwd=API)
-
-    run(
-        *uv, "run", "python", "-c",
-        "from api.main import app; print('API imports successfully')",
-        cwd=API,
-    )
+    run(*uv, "sync", "--locked", "--no-dev", cwd=CLIENT)
 
 
 def verify():
@@ -191,8 +182,10 @@ def main():
         raise SystemExit("Run this installer using Windows Python.")
 
     for path in (
-        API / "pyproject.toml", ENGINE / "Makefile",
+        API / "pyproject.toml", CLIENT / "pyproject.toml",
+        ENGINE / "Makefile",
         ENGINE / "run_container.sh",
+        GUI / "index.html",
         PROJECT / "tests" / "verify_install.sh",
     ):
         if not path.is_file():

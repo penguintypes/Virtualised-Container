@@ -1,0 +1,628 @@
+#!/usr/bin/python3
+import ipaddress
+import json
+import re
+import subprocess
+import sys
+import os
+from pathlib import Path
+from datetime import datetime, timezone
+
+
+CLI = "/opt/vcontainer/bin/vcontainer-cli"
+NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,62}\Z")
+MEMORY = re.compile(r"(?:max|[1-9][0-9]*[KMG]?)\Z")
+MAX_REQUEST = 65536
+GROUPS = Path("/sys/fs/cgroup/vcontainer")
+STATES = Path("/var/lib/vcontainer/containers")
+IMAGES= Path("/var/lib/vcontainer/images")
+
+
+def timestamp():
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def update_lifecycle(name, event, exit_code=None):
+    path = STATES / name / "lifecycle.json"
+    try:
+        data = json.loads(path.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        data = {"created_at": timestamp(), "started_at": None,
+                "stopped_at": None, "exit_code": None}
+
+    now = timestamp()
+    if event == "start":
+        data["started_at"] = now
+        data["stopped_at"] = None
+        data["exit_code"] = None
+    elif event == "stop":
+        data["stopped_at"] = now
+        data["exit_code"] = None
+    elif event == "exit":
+        data["stopped_at"] = now
+        data["exit_code"] = exit_code
+
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(data) + "\n")
+    temporary.replace(path)
+
+
+def valid_name(value, label):
+    if not isinstance(value, str) or not NAME.fullmatch(value):
+        raise ValueError(f"Invalid {label}")
+    return value
+
+
+def integer(value, label, minimum, maximum):
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"Invalid {label}")
+    if value < minimum or value > maximum:
+        raise ValueError(f"Invalid {label}")
+    return value
+
+
+def read_request():
+    raw = sys.stdin.buffer.read(MAX_REQUEST + 1)
+    if not raw or len(raw) > MAX_REQUEST:
+        raise ValueError("Invalid request size")
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as error:
+        raise ValueError("Invalid JSON request") from error
+    if not isinstance(data, dict):
+        raise ValueError("Request must be an object")
+    return data
+
+
+def validated_ports(data):
+    ports = data.get("ports", [])
+
+    if not isinstance(ports, list) or len(ports) > 16:
+        raise ValueError("Invalid port mappings")
+
+    result = []
+    host_ports = set()
+
+    for mapping in ports:
+        if (
+            not isinstance(mapping, dict)
+            or set(mapping) != {"host_port", "container_port"}
+        ):
+            raise ValueError("Invalid port mapping")
+
+        host_port = integer(
+            mapping["host_port"],
+            "host port",
+            1024,
+            65535,
+        )
+        container_port = integer(
+            mapping["container_port"],
+            "container port",
+            1,
+            65535,
+        )
+
+        if host_port in host_ports:
+            raise ValueError("Duplicate host port")
+
+        host_ports.add(host_port)
+
+        result.append({
+            "host_port": host_port,
+            "container_port": container_port,
+        })
+
+    return result
+
+def image_configuration(image):
+    path = IMAGES / image / "config.json"
+
+    try:
+        if path.stat().st_size > MAX_REQUEST:
+            raise ValueError("Image configuration is too large")
+
+        data = json.loads(path.read_text())
+    except FileNotFoundError:
+        raise ValueError(
+            "Image has no default command; porvide a command after --"
+        )
+    except json.JSONDecodeError as error:
+        raise ValueError("Invalid image configuration") from error
+
+    process = data.get("process", {})
+    command = process.get("args")
+    environment_entries = process.get("env", [])
+
+    if(
+        not isinstance(command, list)
+        or not command
+        or any(
+            not isinstance(argument, str)
+            or not argument
+            or "\0" in argument
+            or len(argument) > 4096
+            for argument in command
+        )
+    ):
+        raise ValueError(
+            "Image has no valid default command; provide a command after --"
+        )
+
+    if not isinstance(environment_entries, list):
+        raise ValueError("Image has an invalid environment")
+
+    environment = {}
+    for entry in environment_entries:
+        if not isinstance(entry, str) or "\0" in entry:
+            raise ValueError("Image has an invalid environment")
+        name, separator, value = entry.partition("=")
+        if (
+            not separator
+            or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name)
+            or len(value) > 8192
+        ):
+            raise ValueError("Image has an invalid environment")
+        environment[name] = value
+
+    return command, environment
+
+def create_arguments(data):
+    allowed = {
+        "name", "image", "command", "hostname", "memory_max",
+        "pids_max", "cpu_quota", "cpu_period", "network", "ip",
+        "volumes", "ports", "environment",
+    }
+    if set(data) - allowed:
+        raise ValueError("Unsupported create option")
+
+    name = valid_name(data.get("name"), "container name")
+    image = valid_name(data.get("image"), "image name")
+    command = data.get("command")
+    image_command, image_environment = image_configuration(image)
+
+    if command is None:
+        command = image_command
+
+    user_environment = data.get("environment", {})
+    if not isinstance(user_environment, dict) or len(user_environment) > 128:
+        raise ValueError("Invalid environment")
+    for variable, value in user_environment.items():
+        if (
+            not isinstance(variable, str)
+            or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", variable)
+            or not isinstance(value, str)
+            or "\0" in value
+            or len(value) > 8192
+        ):
+            raise ValueError("Invalid environment variable")
+
+    environment = {**image_environment, **user_environment}
+
+    if (
+        not isinstance(command, list)
+        or not 1 <= len(command) <= 128
+        or any(not isinstance(item, str) or not item or "\0" in item
+               or len(item) > 4096 for item in command)
+    ):
+        raise ValueError("Invalid command")
+
+    arguments = [CLI, "run", image, "--name", name, "--log"]
+
+    for variable, value in environment.items():
+        arguments.extend(["--env", f"{variable}={value}"])
+
+    hostname = data.get("hostname")
+    if hostname is not None:
+        arguments.extend(["--hostname", valid_name(hostname, "hostname")])
+
+    memory_max = data.get("memory_max")
+    if memory_max is not None:
+        if not isinstance(memory_max, str) or not MEMORY.fullmatch(memory_max):
+            raise ValueError("Invalid memory limit")
+        arguments.extend(["--memory-max", memory_max])
+
+    if data.get("pids_max") is not None:
+        value = integer(data["pids_max"], "process limit", 1, 32768)
+        arguments.extend(["--pids-max", str(value)])
+
+    quota = data.get("cpu_quota")
+    period = data.get("cpu_period")
+    if (quota is None) != (period is None):
+        raise ValueError("CPU quota and period must be provided together")
+    if quota is not None:
+        quota = integer(quota, "CPU quota", 1000, 1000000000)
+        period = integer(period, "CPU period", 1000, 1000000)
+        arguments.extend(["--cpu-max", str(quota), str(period)])
+
+    network = data.get("network")
+    address = data.get("ip")
+    if network is not None or address is not None:
+        if network != "bridge" or not isinstance(address, str):
+            raise ValueError("Bridge network and IPv4 address are required together")
+        try:
+            parsed = ipaddress.ip_address(address)
+        except ValueError as error:
+            raise ValueError("Invalid IPv4 address") from error
+        if parsed.version != 4:
+            raise ValueError("Invalid IPv4 address")
+        arguments.extend(["--network", "bridge", "--ip", address])
+
+    ports = validated_ports(data)
+
+    if ports and network != "bridge":
+        raise ValueError(
+            "Published ports require bridge networking"
+        )
+
+    volumes = data.get("volumes", [])
+    if not isinstance(volumes, list) or len(volumes) > 16:
+        raise ValueError("Invalid volumes")
+    targets = set()
+    for volume in volumes:
+        if not isinstance(volume, dict) or set(volume) != {"name", "target"}:
+            raise ValueError("Invalid volume")
+        volume_name = valid_name(volume["name"], "volume name")
+        target = volume["target"]
+        if (
+            not isinstance(target, str)
+            or not target.startswith("/")
+            or target == "/"
+            or target.endswith("/")
+            or any(part in ("", ".", "..") for part in target[1:].split("/"))
+            or "\0" in target
+            or len(target) > 4095
+            or target in targets
+        ):
+            raise ValueError("Invalid or duplicate volume target")
+        if not (Path("/var/lib/vcontainer/volumes") / volume_name / "_data").is_dir():
+            raise ValueError(f"Volume not found: {volume_name}")
+        targets.add(target)
+        arguments.extend(["--volume", f"{volume_name}:{target}"])
+
+    arguments.extend(["--", *command])
+    return name, arguments
+
+
+def execute(arguments):
+    result = subprocess.run(
+        arguments,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    if result.returncode != 0:
+        message = result.stderr.strip() or result.stdout.strip() or "Runtime command failed"
+        print(message, file=sys.stderr)
+        raise SystemExit(result.returncode)
+    return result.stdout.strip()
+
+
+def launch(arguments):
+    os.execv(arguments[0], arguments)
+
+
+def port_state(name):
+    return STATES / name / "ports.json"
+
+
+def unit_name(name, host_port):
+    return f"vcontainer-port-{name}-{host_port}.service"
+
+
+def read_port_state(name):
+    try:
+        data = json.loads(port_state(name).read_text())
+    except FileNotFoundError:
+        return {"address": None, "ports": []}
+    except json.JSONDecodeError as error:
+        raise ValueError("Invalid saved port state") from error
+
+    if not isinstance(data, dict):
+        raise ValueError("Invalid saved port state")
+    return data
+
+
+def stop_port_forwards(name):
+    for mapping in read_port_state(name).get("ports", []):
+        host_port = mapping.get("host_port")
+        if isinstance(host_port, int):
+            subprocess.run(
+                ["systemctl", "stop", unit_name(name, host_port)],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+
+
+def update_memory_limit(name, value):
+    if not isinstance(value, str) or not MEMORY.fullmatch(value):
+        raise ValueError("Invalid memory limit")
+
+    state = STATES / name
+    if not state.is_dir():
+        raise ValueError("Container not found")
+
+    group_file = GROUPS / name / "memory.max"
+    previous_live = group_file.read_text().strip() if group_file.is_file() else None
+
+    # Apply the running limit first. The kernel rejects unsafe values, leaving
+    # the persisted launch configuration unchanged.
+    if group_file.is_file():
+        group_file.write_text(value + "\n")
+
+    try:
+        config = state / "config"
+        lines = config.read_text().splitlines()
+        replaced = False
+        for index, line in enumerate(lines):
+            if line.startswith("memory_max="):
+                lines[index] = f"memory_max={value}"
+                replaced = True
+                break
+        if not replaced:
+            lines.append(f"memory_max={value}")
+        temporary = config.with_suffix(".tmp")
+        temporary.write_text("\n".join(lines) + "\n")
+        temporary.replace(config)
+
+        launch = state / "launch.argv"
+        raw = launch.read_bytes()
+        if not raw.endswith(b"\0"):
+            raise ValueError("Invalid saved launch arguments")
+        arguments = [item.decode() for item in raw[:-1].split(b"\0")]
+        if "--memory-max" in arguments:
+            position = arguments.index("--memory-max")
+            if position + 1 >= len(arguments):
+                raise ValueError("Invalid saved memory option")
+            arguments[position + 1] = value
+        else:
+            position = arguments.index("--") if "--" in arguments else len(arguments)
+            arguments[position:position] = ["--memory-max", value]
+        temporary = launch.with_suffix(".tmp")
+        temporary.write_bytes(b"\0".join(item.encode() for item in arguments) + b"\0")
+        temporary.replace(launch)
+    except Exception:
+        if previous_live is not None:
+            group_file.write_text(previous_live + "\n")
+        raise
+
+    return {
+        "name": name,
+        "memory_max": value,
+        "live": previous_live is not None,
+    }
+
+
+def update_saved_option(state, key, option, values):
+    config = state / "config"
+    lines = config.read_text().splitlines()
+    setting = f"{key}={' '.join(values)}"
+    for index, line in enumerate(lines):
+        if line.startswith(key + "="):
+            lines[index] = setting
+            break
+    else:
+        lines.append(setting)
+    temporary = config.with_suffix(".tmp")
+    temporary.write_text("\n".join(lines) + "\n")
+    temporary.replace(config)
+
+    launch = state / "launch.argv"
+    raw = launch.read_bytes()
+    if not raw.endswith(b"\0"):
+        raise ValueError("Invalid saved launch arguments")
+    arguments = [item.decode() for item in raw[:-1].split(b"\0")]
+    if option in arguments:
+        position = arguments.index(option)
+        old_count = 2 if option == "--cpu-max" else 1
+        del arguments[position:position + old_count + 1]
+    else:
+        position = arguments.index("--") if "--" in arguments else len(arguments)
+    arguments[position:position] = [option, *values]
+    temporary = launch.with_suffix(".tmp")
+    temporary.write_bytes(b"\0".join(item.encode() for item in arguments) + b"\0")
+    temporary.replace(launch)
+
+
+def update_resources(name, request):
+    allowed = {"memory_max", "pids_max", "cpu_quota", "cpu_period"}
+    if not request or set(request) - allowed:
+        raise ValueError("Invalid resource update")
+    if ("cpu_quota" in request) != ("cpu_period" in request):
+        raise ValueError("CPU quota and period must be provided together")
+
+    state = STATES / name
+    if not state.is_dir():
+        raise ValueError("Container not found")
+    processes = GROUPS / name / "cgroup.procs"
+    if processes.is_file() and processes.read_text().strip():
+        raise ValueError("Stop the container before editing resources")
+
+    result = {"name": name, "live": (GROUPS / name).is_dir()}
+    if "memory_max" in request:
+        value = request["memory_max"]
+        result.update(update_memory_limit(name, value))
+
+    if "pids_max" in request:
+        value = integer(request["pids_max"], "process limit", 1, 32768)
+        group_file = GROUPS / name / "pids.max"
+        if group_file.is_file():
+            group_file.write_text(f"{value}\n")
+        update_saved_option(state, "pids_max", "--pids-max", [str(value)])
+        result["pids_max"] = value
+
+    if "cpu_quota" in request:
+        quota = integer(request["cpu_quota"], "CPU quota", 1000, 1000000000)
+        period = integer(request["cpu_period"], "CPU period", 1000, 1000000)
+        group_file = GROUPS / name / "cpu.max"
+        if group_file.is_file():
+            group_file.write_text(f"{quota} {period}\n")
+        update_saved_option(
+            state, "cpu_max", "--cpu-max", [str(quota), str(period)]
+        )
+        result["cpu_max"] = f"{quota} {period}"
+
+    return result
+
+
+def publish_ports(name, address, mappings):
+    valid_name(name, "container name")
+    try:
+        parsed = ipaddress.ip_address(address)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Invalid container address") from error
+    if parsed.version != 4:
+        raise ValueError("Invalid container address")
+
+    mappings = validated_ports({"ports": mappings})
+    stop_port_forwards(name)
+    started = []
+
+    try:
+        for mapping in mappings:
+            host_port = mapping["host_port"]
+            container_port = mapping["container_port"]
+            unit = unit_name(name, host_port)
+            result = subprocess.run(
+                [
+                    "systemd-run", "--collect", f"--unit={unit}",
+                    "--property=Restart=on-failure",
+                    "/usr/bin/socat",
+                    f"TCP-LISTEN:{host_port},bind=127.0.0.1,reuseaddr,fork",
+                    f"TCP:{address}:{container_port}",
+                ],
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode != 0:
+                raise RuntimeError(
+                    result.stderr.strip() or result.stdout.strip()
+                    or "Could not publish port"
+                )
+            started.append(host_port)
+    except Exception:
+        for host_port in started:
+            subprocess.run(
+                ["systemctl", "stop", unit_name(name, host_port)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+        raise
+
+    path = port_state(name)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps({
+        "address": str(parsed),
+        "ports": mappings,
+    }) + "\n")
+    temporary.replace(path)
+    return mappings
+
+
+def main():
+    arguments = sys.argv[1:]
+    if arguments == ["create"]:
+        name, command = create_arguments(read_request())
+
+        if (GROUPS / name).is_dir() or (STATES / name).is_dir():
+            raise ValueError("Container already exists")
+
+        launch(command)
+
+    if len(arguments) == 2 and arguments[0] in ("publish", "republish"):
+        action, name = arguments
+        valid_name(name, "container name")
+        if not (STATES / name).is_dir():
+            raise ValueError("Container not found")
+
+        if action == "publish":
+            request = read_request()
+            mappings = publish_ports(
+                name,
+                request.get("address"),
+                request.get("ports", []),
+            )
+        else:
+            saved = read_port_state(name)
+            if not saved.get("ports"):
+                return {"name": name, "ports": []}
+            mappings = publish_ports(
+                name,
+                saved.get("address"),
+                saved.get("ports", []),
+            )
+        return {"name": name, "ports": mappings}
+
+    if len(arguments) == 2 and arguments[0] in (
+        "start", "stop", "remove", "started"
+    ):
+        action, name = arguments
+        valid_name(name, "container name")
+        if not (GROUPS / name).is_dir() and not (STATES / name).is_dir():
+            raise ValueError("Container not found")
+
+        if action == "started":
+            update_lifecycle(name, "start")
+            return {"name": name, "status": "running"}
+
+        if action == "start":
+            launch([CLI, "start", name])
+
+        if action in ("stop", "remove"):
+            stop_port_forwards(name)
+
+        runtime_action = "rm" if action == "remove" else action
+        message = execute([CLI, runtime_action, name])
+        if action == "stop":
+            update_lifecycle(name, action)
+        return {"name": name, "message": message}
+
+    if len(arguments) == 2 and arguments[0] == "resources":
+        _, name = arguments
+        valid_name(name, "container name")
+        request = read_request()
+        return update_resources(name, request)
+
+    if len(arguments) == 3 and arguments[0] == "finish":
+        _, name, exit_code_text = arguments
+        valid_name(name, "container name")
+
+        if not exit_code_text.isdigit():
+            raise ValueError("Invalid exit code")
+
+        exit_code = int(exit_code_text)
+
+        if exit_code < 0 or exit_code > 255:
+            raise ValueError("Invalid exit code")
+
+        if not (STATES / name).is_dir():
+            raise ValueError("Container not found")
+
+        stop_port_forwards(name)
+        update_lifecycle(name, "exit", exit_code)
+
+        return {
+            "name": name,
+            "exit_code": exit_code,
+        }
+
+    raise ValueError(
+        "Use: create, start NAME, stop NAME, remove NAME, "
+        "started NAME, resources NAME, publish NAME, republish NAME, "
+        "or finish NAME EXIT_CODE"
+    )
+
+
+if __name__ == "__main__":
+    try:
+        print(json.dumps(main()))
+    except (ValueError, RuntimeError, OSError,
+            subprocess.TimeoutExpired) as error:
+        print(error, file=sys.stderr)
+        sys.exit(1)

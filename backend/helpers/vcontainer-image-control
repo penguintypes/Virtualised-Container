@@ -1,0 +1,40 @@
+#!/usr/bin/python3
+import os
+import re
+import sys
+
+
+CLI = "/opt/vcontainer/bin/vcontainer-cli"
+NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,62}\Z")
+REFERENCE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/@:+-]{0,511}\Z")
+
+
+def valid_name(value):
+    if not NAME.fullmatch(value):
+        raise ValueError("Invalid image name")
+
+
+def main():
+    arguments = sys.argv[1:]
+
+    if len(arguments) in (2, 3) and arguments[0] == "pull":
+        _, name, *reference = arguments
+        valid_name(name)
+        if reference and not REFERENCE.fullmatch(reference[0]):
+            raise ValueError("Invalid image reference")
+        os.execv(CLI, [CLI, "pull", name, *reference])
+
+    if len(arguments) == 2 and arguments[0] == "delete":
+        _, name = arguments
+        valid_name(name)
+        os.execv(CLI, [CLI, "delete", name])
+
+    raise ValueError("Use: pull NAME [REFERENCE] or delete NAME")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (ValueError, OSError) as error:
+        print(error, file=sys.stderr)
+        sys.exit(1)

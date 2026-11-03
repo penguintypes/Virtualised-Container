@@ -1,0 +1,68 @@
+<!doctype html>
+<meta charset="utf-8"><title>Runner</title>
+<link rel="icon" href="R.png" />
+<style>
+body{font:14px "Segoe UI",system-ui,sans-serif;margin:0;background:#1e1e1e;color:#d4d4d4;height:100vh;display:flex;flex-direction:column}
+header{background:#252526;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #333}
+h1{margin:0;font-size:16px;color:#fff;font-weight:600;letter-spacing:0.5px}
+.controls{display:flex;gap:12px;align-items:center}
+select{background:#3c3c3c;color:#fff;border:1px solid #555;padding:6px 16px;border-radius:4px;outline:none;cursor:pointer}
+button{background:#007acc;color:white;border:none;padding:7px 20px;border-radius:4px;cursor:pointer;font-weight:600;transition:0.2s}
+button:hover{background:#0098ff}
+main{display:grid;grid-template-columns:1fr 1fr;flex:1;min-height:0}
+.pane{display:flex;flex-direction:column;border-right:1px solid #333}
+.pane:last-child{border-right:none}
+.pane-header{background:#252526;padding:12px 20px;font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#eee;display:flex;align-items:center;border-bottom:1px solid #333}
+.indicator{width:8px;height:8px;border-radius:50%;background:#555;margin-right:8px}
+.indicator.running{background:#e5a924;box-shadow:0 0 8px #e5a924}
+.editor-wrapper{display:flex;flex:1;min-height:0;background:#1e1e1e}
+.line-numbers{padding:20px 10px;text-align:right;color:#858585;background:#1e1e1e;border-right:1px solid #333;font-family:"Consolas","Courier New",monospace;font-size:15px;line-height:1.5;overflow:hidden;user-select:none}
+textarea,pre{flex:1;margin:0;border:none;box-sizing:border-box;padding:20px;color:#d4d4d4;font-family:"Consolas","Courier New",monospace;font-size:15px;outline:none;resize:none;overflow:auto;line-height:1.5;white-space:pre}
+textarea{background:#1e1e1e}
+pre{background:#111;white-space:pre-wrap;color:#4ec9b0}
+</style>
+<header>
+  <h1><img src="R.png" style="height: 22px; object-fit: contain; vertical-align: text-bottom; margin-right: 8px; transform: translateY(2px);" /> Runner</h1>
+  <div class="controls">
+    <select id="language"><option>python</option><option>node</option><option>c</option></select>
+    <button onclick="run()">▶ Run Code</button>
+  </div>
+</header>
+<main>
+  <div class="pane">
+    <div class="pane-header">Source Code</div>
+    <div class="editor-wrapper">
+  <div class="line-numbers" id="lines"></div>
+  <div style="position:relative; flex:1; overflow:hidden; background:#1e1e1e">
+    <pre id="highlight" style="position:absolute; inset:0; margin:0; padding:20px; color:#d4d4d4; font-family:'Consolas','Courier New',monospace; font-size:15px; line-height:1.5; white-space:pre; overflow:hidden; pointer-events:none;"></pre>
+    <textarea id="code" spellcheck="false" style="position:absolute; inset:0; margin:0; padding:20px; color:#d4d4d4; background:#1e1e1e; caret-color:#d4d4d4; font-family:'Consolas','Courier New',monospace; font-size:15px; line-height:1.5; white-space:pre; overflow:auto; border:none; outline:none; resize:none;">print("hello from vcontainer")</textarea>
+  </div>
+</div>
+  </div>
+  <div class="pane">
+    <div class="pane-header"><div id="status" class="indicator"></div> Output</div>
+    <pre id="output">Ready.</pre>
+  </div>
+</main>
+<script>
+const $=x=>document.querySelector(x); let pending=false;
+async function run(){
+  if(pending) return; pending=true;
+  $('#status').classList.add('running'); $('#output').textContent='Running…';
+  try {
+    const r=await fetch('/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({language:$('#language').value,code:$('#code').value,stdin:''})});
+    const res = await r.json();
+    if (res.stderr) { $('#output').textContent = res.stderr; $('#output').style.color = '#f14c4c'; }
+    else { $('#output').textContent = res.stdout || 'No output.'; $('#output').style.color = '#d4d4d4'; }
+  } catch(e) { $('#output').textContent='Error: '+e.message; }
+  pending=false; $('#status').classList.remove('running');
+}
+
+const $c=$('#code'), $l=$('#lines');
+function upd(){ $l.innerHTML=Array($c.value.split('\n').length).fill(0).map((_,i)=>i+1).join('<br>'); }
+$c.addEventListener('input', upd);
+$c.addEventListener('scroll', ()=> $l.scrollTop = $c.scrollTop);
+upd();
+setInterval(()=>{if(pending)$('#output').dataset.poll=Date.now()},500)
+
+</script>

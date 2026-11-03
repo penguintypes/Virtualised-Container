@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>vContainer</title>
+<link rel="icon" href="logo.png" />
+    <link rel="stylesheet" href="7.css" />
+    <link rel="stylesheet" href="style.css?v=27" />
+  </head>
+  <body>
+                                
+    <div class="window-body application-layout">
+        <aside>
+          <div class="brand"><img src="/logo.png" alt="" style="height:24px;vertical-align:middle;margin-right:8px"> vContainer</div>
+          <nav>
+            <button data-view="home">Home</button>
+            <div class="nav-group">Manage</div>
+            <button data-view="containers">Containers</button>
+            <button data-view="images">Images</button>
+            <button data-view="volumes">Volumes</button>
+          </nav>
+          <div class="sidebar-footer">
+            <small id="health">Checking backend…</small>
+            <button id="theme" type="button" aria-pressed="false">
+              Dark mode
+            </button>
+          </div>
+        </aside>
+        <main class="has-scrollbar">
+          <div id="banner" class="banner is-hidden"></div>
+          <header>
+            <h1 id="title">Home</h1>
+            <div id="actions"></div>
+          </header>
+          <section id="content">
+            <span class="loading-status" role="status">
+              <span class="loader animate" aria-hidden="true"></span>
+              <span>Loading…</span>
+            </span>
+          </section>
+        </main>
+      </div>
+    </div>
+
+    <dialog id="run" class="window glass active">
+      <div class="title-bar">
+        <div class="title-bar-text">Run container</div>
+        <div class="title-bar-controls">
+          <button aria-label="Close" data-close="run"></button>
+        </div>
+      </div>
+      <form id="run-form" class="has-scrollbar">
+        <h2>Run container</h2>
+        <label>Image<select id="image" required></select></label>
+        <label
+          >Name<input
+            id="name"
+            required
+            pattern="[A-Za-z0-9][A-Za-z0-9_.-]{0,62}"
+        /></label>
+        <label
+          >Command<input
+            id="command"
+            placeholder="optional; image default is used when empty"
+        /></label>
+        <label
+          >Environment<input
+            id="environment"
+            placeholder="KEY=value,OTHER=value"
+        /></label>
+        <div class="form-grid">
+          <label
+            >Named volume<select id="container-volume">
+              <option value="">No volume</option>
+            </select></label
+          >
+          <label
+            >Volume target<input id="volume-target" placeholder="/data"
+          /></label>
+          <label>Memory limit<input id="memory" placeholder="250M" /></label>
+          <label
+            >PID limit<input id="pids" type="number" min="1" placeholder="64"
+          /></label>
+          <label
+            >CPU quota/period<input id="cpus" placeholder="50000/100000"
+          /></label>
+          <label>Published port<input id="port" placeholder="8080:80" /></label>
+        </div>
+        <p class="dialog-actions">
+          <button type="button" data-close="run">Cancel</button>
+          <button class="primary">Run</button>
+        </p>
+      </form>
+    </dialog>
+
+    <dialog id="details" class="window glass active">
+      <div class="title-bar">
+        <div class="title-bar-text">Container details</div>
+        <div class="title-bar-controls">
+          <button aria-label="Close" data-close="details"></button>
+        </div>
+      </div>
+      <div class="space-between-row"><h2 id="detail-title">Container</h2></div>
+      <div id="detail-content" class="dialog-content has-scrollbar"></div>
+    </dialog>
+
+    <dialog id="resources" class="window glass active">
+      <div class="title-bar">
+        <div class="title-bar-text">Edit resources</div>
+        <div class="title-bar-controls">
+          <button aria-label="Close" data-close="resources"></button>
+        </div>
+      </div>
+      <form id="resource-form" class="has-scrollbar">
+        <h2>Edit resources</h2>
+        <input id="resource-name" type="hidden" />
+        <label
+          >Memory limit<input
+            id="resource-memory"
+            placeholder="512M, 1G, or max"
+            required
+        /></label>
+        <label
+          >PID limit<input
+            id="resource-pids"
+            type="number"
+            min="1"
+            max="32768"
+            required
+        /></label>
+        <label
+          >CPU quota/period<input
+            id="resource-cpu"
+            placeholder="50000/100000"
+            required
+        /></label>
+        <p class="dialog-actions">
+          <button type="button" data-close="resources">Cancel</button>
+          <button class="primary">Save resources</button>
+        </p>
+      </form>
+    </dialog>
+
+    <dialog
+      id="pull-image"
+      class="window glass active"
+      aria-labelledby="pull-image-title"
+    >
+      <div class="title-bar">
+        <div class="title-bar-text" id="pull-image-title">Pull image</div>
+        <div class="title-bar-controls">
+          <button aria-label="Close" data-close="pull-image"></button>
+        </div>
+      </div>
+      <form id="pull-image-form" class="has-scrollbar">
+        <label for="pull-image-name">Name</label>
+        <input id="pull-image-name" name="name" value="alpine" required />
+        <label for="pull-image-source">Image</label>
+        <input
+          id="pull-image-source"
+          name="image"
+          value="alpine:latest"
+          placeholder="e.g. alpine:latest or nginx:stable"
+          required
+        />
+        <p id="pull-image-error" class="banner is-hidden" role="alert"></p>
+        <p class="dialog-actions">
+          <button type="button" data-close="pull-image">Cancel</button>
+          <button type="submit" class="default">Pull image</button>
+        </p>
+      </form>
+    </dialog>
+
+    <dialog
+      id="create-volume"
+      class="window glass active"
+      aria-labelledby="create-volume-title"
+    >
+      <div class="title-bar">
+        <div class="title-bar-text" id="create-volume-title">Create volume</div>
+        <div class="title-bar-controls">
+          <button aria-label="Close" data-close="create-volume"></button>
+        </div>
+      </div>
+      <form id="create-volume-form" class="has-scrollbar">
+        <div class="card">
+          <h2>Volume configuration</h2>
+          <p class="muted-text">
+            Create persistent storage to attach to your containers.
+          </p>
+          <label for="volume-name">Volume name</label>
+          <input
+            id="volume-name"
+            name="name"
+            placeholder="app-data"
+            pattern="[A-Za-z0-9][A-Za-z0-9_.-]{0,62}"
+            maxlength="63"
+            aria-describedby="volume-name-help"
+            required
+          />
+          <small id="volume-name-help" class="muted-text"
+            >Use letters, numbers, dots, underscores, or hyphens. Start with a
+            letter or number.</small
+          >
+        </div>
+        <p id="create-volume-error" class="banner is-hidden" role="alert"></p>
+        <p class="dialog-actions">
+          <button type="button" data-close="create-volume">Cancel</button>
+          <button type="submit" class="default">Create volume</button>
+        </p>
+      </form>
+    </dialog>
+
+    <dialog
+      id="volume-details"
+      class="window glass active"
+      aria-labelledby="volume-detail-title"
+    >
+      <div class="title-bar">
+        <div class="title-bar-text">Volume details</div>
+        <div class="title-bar-controls">
+          <button aria-label="Close" data-close="volume-details"></button>
+        </div>
+      </div>
+      <div class="space-between-row">
+        <h2 id="volume-detail-title">Volume</h2>
+      </div>
+      <div
+        id="volume-detail-content"
+        class="dialog-content has-scrollbar"
+      ></div>
+    </dialog>
+
+    <script src="app.js?v=29"></script>
+
+</body>
+</html>

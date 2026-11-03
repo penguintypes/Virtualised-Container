@@ -4,13 +4,12 @@ Run from Windows: python setup_api_service.py
 Uses VCONTAINER_WSL_DISTRO / VCONTAINER_WSL_USER (Ubuntu / vcdev by default).
 """
 import os
-from pathlib import Path
 import re
 import subprocess
 import sys
+from pathlib import Path
 
 from helper_package import downloaded_helpers
-
 
 SCRIPT = r'''
 set -euo pipefail
@@ -21,6 +20,7 @@ control="$4"
 wrapper="$5"
 image_control="$6"
 volume_control="$7"
+gui_source="$8"
 test "$(id -u "$user")" -ne 0
 home=$(getent passwd "$user" | cut -d: -f6)
 group=$(id -gn "$user")
@@ -56,8 +56,9 @@ if ! command -v curl >/dev/null || ! command -v socat >/dev/null; then
     DEBIAN_FRONTEND=noninteractive apt-get install -y curl ca-certificates socat
 fi
 
-install -d -o "$user" -g "$group" "$api_dir" "$api_dir/src"
+install -d -o "$user" -g "$group" "$api_dir" "$api_dir/src" "$api_dir/gui"
 cp -R "$source/src/." "$api_dir/src/"
+cp -R "$gui_source/." "$api_dir/gui/"
 cp "$source/pyproject.toml" "$source/uv.lock" "$source/README.md" "$api_dir/"
 chown -R "$user:$group" "$api_dir"
 
@@ -70,8 +71,8 @@ if [ ! -x "$HOME/.local/bin/uv" ]; then
     UV_NO_MODIFY_PATH=1 sh "$installer"
 fi
 cd "$1"
-"$HOME/.local/bin/uv" sync --locked --python 3.12
-.venv/bin/python -c 'from api.main import app; print("Linux API imports successfully")'
+"$HOME/.local/bin/uv" sync --locked --no-dev --python 3.12
+.venv/bin/python -c 'from vcontainer_api.main import app; print("Linux API imports successfully")'
 USER_SETUP
 
 cat > /etc/systemd/system/vcontainer-api.service <<UNIT
@@ -84,7 +85,8 @@ Type=simple
 User=$user
 WorkingDirectory=$api_dir
 Environment=PYTHONUNBUFFERED=1
-ExecStart="$api_dir/.venv/bin/python" -m uvicorn api.main:app --host 127.0.0.1 --port 8010
+Environment=VCONTAINER_GUI_DIR=$api_dir/gui
+ExecStart="$api_dir/.venv/bin/python" -m uvicorn vcontainer_api.main:app --host 127.0.0.1 --port 8010
 Restart=on-failure
 RestartSec=2
 
@@ -136,12 +138,17 @@ def install():
     if not re.fullmatch(r"[a-z_][a-z0-9_-]*", user) or user == "root":
         raise SystemExit("Choose a normal Linux user for VCONTAINER_WSL_USER.")
     root = Path(__file__).resolve().parent
-    source = root / "api"
-    wrapper = root / "Vcontainer(win)" / "run_container.sh"
-    for name in ("pyproject.toml", "uv.lock", "src/api/main.py"):
+    source = root / "backend" / "api"
+    wrapper = root / "backend" / "runtime" / "run_container.sh"
+    gui = root / "gui"
+    for name in (
+        "pyproject.toml",
+        "uv.lock",
+        "src/vcontainer_api/main.py",
+    ):
         if not (source / name).is_file():
             raise SystemExit(f"Missing API source: {source / name}")
-    for path in (wrapper,):
+    for path in (wrapper, gui / "index.html"):
         if not path.is_file():
             raise SystemExit(f"Missing installation source: {path}")
     wsl = ["wsl.exe", "-d", distro, "-u", "root", "--exec"]
@@ -150,6 +157,9 @@ def install():
     ).strip()
     linux_wrapper = subprocess.check_output(
         wsl + ["wslpath", "-a", "-u", str(wrapper)], text=True,
+    ).strip()
+    linux_gui = subprocess.check_output(
+        wsl + ["wslpath", "-a", "-u", str(gui)], text=True,
     ).strip()
     with downloaded_helpers() as helpers:
         linux_helpers = subprocess.check_output(
@@ -163,6 +173,7 @@ def install():
                 linux_wrapper,
                 f"{linux_helpers}/vcontainer-image-control",
                 f"{linux_helpers}/vcontainer-volume-control",
+                linux_gui,
             ],
             input=SCRIPT.replace("\r\n", "\n").encode("utf-8"),
             check=True,

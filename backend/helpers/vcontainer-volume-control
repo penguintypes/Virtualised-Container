@@ -1,0 +1,75 @@
+#!/usr/bin/python3
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+
+CLI = "/opt/vcontainer/bin/vcontainer-cli"
+BASE = Path("/var/lib/vcontainer/volumes")
+NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,62}\Z")
+
+
+def valid_name(value):
+    if not isinstance(value, str) or not NAME.fullmatch(value):
+        raise ValueError("Invalid volume name")
+    return value
+
+
+def volume(name):
+    valid_name(name)
+    data = BASE / name / "_data"
+    if not data.is_dir():
+        raise ValueError("Volume not found")
+    return {"name": name, "mount_source": str(data)}
+
+
+def execute(action, name):
+    result = subprocess.run(
+        [CLI, "volume", action, name],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if result.returncode != 0:
+        print(result.stderr.strip() or result.stdout.strip() or "Volume operation failed",
+              file=sys.stderr)
+        raise SystemExit(result.returncode)
+    return result.stdout.strip()
+
+
+def main():
+    arguments = sys.argv[1:]
+    if arguments == ["list"]:
+        if not BASE.is_dir():
+            return []
+        return [
+            volume(path.name)
+            for path in sorted(BASE.iterdir())
+            if (path / "_data").is_dir()
+        ]
+
+    if len(arguments) != 2 or arguments[0] not in ("create", "inspect", "remove"):
+        raise ValueError("Use: list, create NAME, inspect NAME, or remove NAME")
+
+    action, name = arguments
+    valid_name(name)
+    if action == "inspect":
+        return volume(name)
+
+    message = execute(action, name)
+    if action == "create":
+        result = volume(name)
+        result["message"] = message
+        return result
+    return {"name": name, "message": message}
+
+
+if __name__ == "__main__":
+    try:
+        print(json.dumps(main()))
+    except (ValueError, OSError, subprocess.TimeoutExpired) as error:
+        print(error, file=sys.stderr)
+        sys.exit(1)
