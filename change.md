@@ -1,165 +1,505 @@
-# Changes
+# Vcontainer additions and updates
 
-## 2026-10-13 to 2026-10-27 - change01
-### Engine patches
-The WSL launcher and C engine remain the execution authority; only the listed bug fixes and socat port forwarding were added.
-- `engine/src/image.sh`: changed image and OCI stores from `/tmp` to `/var/lib/vcontainer` so the API and CLI share images.
-- `engine/run_container.sh`: lists all image directories, waits before cgroup removal, unmounts overlay state, avoids clean rebuilds, validates unknown commands, adds `-p` and socat cleanup.
-- `engine/src/vcontainer.c`: defaults hostname to the container name, uses the persistent image store, and confirms detached `execvp` through a CLOEXEC pipe.
-- `engine/vcontainer.py`: debug command output is opt-in.
-- sec: established strict root-owned security boundary in /usr/local/libexec/vcontainer
-- sys: installed uidmap and configured subordinate UID/GID ranges for user namespaces
-- fix: removed deadlocking runtime recompilation and fixed image JSON parsing
-- fix: restored execution script syntax and patched absolute path for C binary
-- fix: build_helper.sh cp kept trailing /. so rootfs copies no longer nest and etc/resolv.conf is present; source must be under /var/lib/vcontainer/
-- fix: run_container.sh cleanup trap keeps socat while the container's cgroup.procs is non-empty, so detached 8081/8082 stay reachable
-- fix: engine/src/cgroup.sh sets memory.swap.max to 0 with the memory limit, so an over-limit process is killed instead of swapped (WSL2)
-- fix: engine.remove catches rm exceptions to prevent ghost containers
-- fix: engine.build() strips only trailing --clean/--update flags, so Vcfile paths with spaces work
-- fix: engine exec joins the container cgroup (--cgroup), so exec honors memory and pid limits
-- fix: run_container.sh cleanup checks cgroup.procs with sudo cat (-n); -s is always false on kernel files
-- fix: run_container.sh no longer compiles the C engine into /tmp/vcontainer-work on every start; only the .sh helpers are copied there
-- fix: persist container resource limits (memory, cpus, pids) in engine.json and restore them on restart
-- fix: run_container.sh passes --seccomp by default, so containers block mount, pivot_root, ptrace, unshare, setns and module syscalls and set no_new_privs
-- fix: engine.inspect pops cgroup pids to prevent shadowing the saved pids limit
-- sec: replace hardcoded /tmp/vcontainer-work with mktemp -d to prevent collision and symlink attacks
+This file records user-visible features and material implementation changes.
 
-## 2026-10-25 to 2026-10-26 - change02
-### Adapter and API
-The old Python lifecycle runtime was removed from the merged design. The adapter translates API operations to the runtime CLI and keeps only user-facing metadata locally. `backend/engine.py` delegates lifecycle, limits, namespaces, logs, exec, and image import/pull work to the runtime launcher. `backend/core.py` only parses Vcfiles and reads image metadata. `backend/api.py` is the only server and serves the dashboard.
-- fix: backend/engine.py run() accepts command as a string (shlex.split) as well as a list; string form raised bad_request
-- fix: backend/engine.py remove() stops a running container before rm, so API and dashboard delete work on running containers
-- fix: backend api forwards clean and update flags to engine.build
-- fix: catch BrokenPipeError on client disconnect (api.py)
-- fix: resolve test imports, stop loop, mojibake, and security leaks
-- refactor: de-golf api.py for better human readability
+## Frameless desktop window
 
-## 2026-10-25 to 2026-10-27 - change03
-### Samples and dashboard
-Vcfile `RUN`, persisted `meta.json`, Alpine blog/runner images, the two sample UIs, and the vanilla dashboard were added. The blog and runner are Alpine Vcfiles with `RUN`; the blog uses SQLite comments and Markdown preview, and the runner uses Python, Node, and C. Java was omitted to keep the sample image smaller. The dashboard supports run, start, stop, logs, delete, build, stats, and published-port links.
-- fix: repaired alpine meta.json (invalid JSON made GET /images return 400)
-- fix: samples/blog/index.html poll() ignores empty server responses, so the default post text no longer disappears
-- feat: grouped run actions into a split-button dropdown in GUI
-- feat: GUI build asks for --clean and --update via confirm() prompts
-- fix: corrected GUI dropdown CSS inline override to restore toggle visibility
-- fix: gui show() replaces the view with 'Failed to load <kind>: <error>' when a request fails, so no stale container list remains
-- feat: Portainer-inspired dashboard (Home, container detail with logs/stats/exec, images upload/download, dark/light theme)
-- feat: Home container cards with exec and details, single-page container detail, sidebar system panel, fix PIDs limit display
-- feat: minimal two-column Home cards with usage bars and Open button
-- feat: lavender/pink theme, host gauges on Home, GET /system endpoint
-- feat: Home keeps gauges when backend is offline, boxed sidebar tabs, clearer tables, compact detail page
-- fix: Quick start creates a new container each click, responsive tables and detail page, larger Details, equal header buttons
-- feat: logs above console with last-lines view, Open button in details, livelier Images table, status pills on Home, Image storage tile
-- feat: aligned detail page grid, colour-filled Details/Start/Stop/Delete buttons
-- fix: stable card and detail layout for stopped containers, Details as its own table column
-- fix: tighter top and bottom spacing so Home has no scrollbar with two containers
+- Added a pywebview JavaScript bridge for minimize, maximize/restore, and close.
+- The existing Windows 7-styled HTML title bar is now the explicit desktop drag
+  region, while its controls remain hidden in ordinary browser sessions.
+- Enabled the frameless, resizable Edge WebView2 window with a native shadow and
+  repaired the main application layout around the custom title bar.
+- Kept the native pywebview `Window` outside the exposed JavaScript API object to
+  prevent recursive WinForms object serialization during desktop startup.
 
-### Installer and tests
-The WSL installer, PowerShell/NSIS launchers, verification checklist, no-root unit tests, and rootful integration script were added.
-- fix: install.sh wrote alpine meta.json with escaped quotes, which made the file invalid JSON
-- fix: install.sh asks for the sudoers NOPASSWD rule via /dev/tty when piped (curl | bash); defaults to no when there is no terminal, VC_SUDOERS=y overrides
-- fix: install.nsi uses ExecWait so sudo can prompt, and excludes .git, install.exe and engine-arm from the bundle; install.ps1 honors VC_DISTRO, stops if install.sh fails, and waits for :8080 instead of sleeping 12 s (untested on Windows)
-- fix: install.ps1 converts backslashes to slashes and strips the \wsl.localhost prefix before calling bash; tested by running it from PowerShell (install.exe and C:\ paths still untested)
-- feat: start.sh launches only the dashboard without auto-starting demo containers
-- test: added tests/rest_cases.sh (one-command run of 6 REST cases incl. memory limit) and rewrote vcontainer_6_test_cases.md for the REST API with list commands
-- test: verify install.exe works on Windows
-- test: rest_cases.sh runs cases in the doc order (B1, B2, C1, C2, A1, A2); vcontainer_6_test_cases.md C1 now uses the API stop like the script
+## Repository documentation
 
-### Documentation
-- docs: README documents Ubuntu version and the root-owned deploy rule
-- docs: README install section now says clone + bash install.sh (removed the one-line curl installer, which cannot work), notes install.exe is built locally with makensis, and points to engine-arm/
-- docs: ARCHITECTURE.md names run_container.sh instead of a stray backticked phrase
-- docs: mark C:\ path installation as verified
-- docs: README and ARCHITECTURE.md describe seccomp default, the dashboard, GET /system, image upload/download, start route and the 6 REST cases
+- Replaced the placeholder root README with current project goals, requirements,
+  installation, CLI and Compose usage, GUI/API access, architecture, runtime storage,
+  development, troubleshooting, limitations, and project direction.
 
-### Chores and cleanup
-- chore: removed one-off patch scripts (patch_images.py)
-- chore: removed duplicated JS/CSS blocks in gui/app.js and gui/style.css
-- chore: removed fix_install.py, fix_dropdown.py, cleanup.py, vcontainer-source-dump.txt, and install.exe
-- chore: ignore vcontainer_source_dump.txt in git
+## Volumes GUI section
 
-## 2026-10-29 20:22 - change04
-- Merged the alternate GUI layout and features into the stdlib backend
-- Added /system/disk and /volumes API endpoints using Python 3.14 stdlib
-- Stripped desktop window/pywebview bindings from GUI for clean browser support
+- Added a Volumes entry to the GUI sidebar with volume name and Linux mount source.
+- Added volume creation, inspection, and guarded removal controls using the existing
+  API; in-use and non-empty volumes remain protected by backend conflict checks.
+- Expanded volume inspection with attachment state, attached container names and
+  statuses, container mount targets, a copyable storage path, and a context-aware
+  removal control that is disabled while the volume is attached.
+- Added named-volume selection and an absolute container target path to the Run
+  dialog, allowing GUI-created containers to use persistent storage directly.
 
-## 2026-10-29 - change05
-- fix: removed duplicate setTheme() declaration in gui/app.js; verified JavaScript syntax with node --check gui/app.js (exit code 0).
+## Container-only disk usage
 
-## 2026-10-29 - change06
-- fix: restored dashboard render error visibility and added console diagnostics to investigate the blank screen.
+- Replaced the Home page's WSL filesystem capacity card with actual container disk
+  usage: writable OverlayFS upper layers, container metadata, logs, and state files.
+- Base images, named volumes, the OverlayFS merged view, and unrelated WSL files are
+  excluded to avoid double-counting and to keep the metric container-specific.
+- `/system/disk` now also returns a per-container breakdown and container count.
 
-## 2026-10-29 - change07
-- fix: removed the obsolete pywebview window/title-bar shell from gui/index.html; visually verified the dashboard renders correctly in the browser.
-- 2026-10-29 19:12 fix: remove obsolete window shell from index.html, restore render error diagnostics, validate volume name before removal, clean whitespace
-- 2026-10-30 12:19 fix: repair backend run_volume to use engine script for safe deletion
-- 2026-10-30 12:19 feat: patch C engine to support --env and create standard /dev nodes
+## Idempotent Compose up
 
-## 2026-10-31 02:53 - change08
-- feat: Added live graphs, compact cards, and Details routes to dashboard GUI
-- feat: Added /images/pull and /system/live API routes for dashboard metrics
-- feat: API POST /containers now requires a `memory` parameter to prevent host OOM
-- feat: Added "Launch BlogDrop" quick-action to dashboard to spin up standard stack
-- feat: Added default command fallbacks for mysql, nginx, and node images in engine
-- fix: API automatically marks missing/ghost containers as stopped on boot
-- fix: Start-handler preserves volumes, env, network, and IP across restarts
-- fix: Preserved explicit --ip arguments when -p (ports) are passed
-- fix: Changed engine default cpu_quota to "max" (unlimited) and fixed CPU % cache
-- fix: Corrected userns map to cover root and standard user identities correctly
-- fix: Engine stop path retries rmdir up to 50 times to bypass cgroup kernel locks
-- fix: Cleaned up stop/inspect response parsing to strip trailing whitespace keys
-- fix: Added fflush(stderr) in C engine die() to prevent swallowed error outputs
-- almost05: Added .mailmap to standardize author identity.
-- almost05: Fixed javascript syntax crash in gui/app.js causing dashboard hang.
-- almost06: Reorganized file hierarchy, moved loose script files into `patches/`.
-- almost06: Fixed `backend/api.py` POST payload syntax error blocking server boot.
-- almost06: Fixed `backend/engine.py` "string indices must be integers" by supporting dictionary payload parsing.
-- almost06: Fixed "list object has no attribute items" error by properly parsing env array iterations.
-- almost06: Fixed the Node backend crash by injecting `sh -c "cd /app && npm start"` because engine lacks working directory support.
-- almost06: Resolved Nginx container launch failure by properly naming the `blogdrop-nginx` volume.
+- `compose up` now starts matching stopped containers and leaves matching running
+  containers alone instead of trying to create duplicate metadata and colliding
+  with their existing bridge IP addresses.
+- Rollback remains limited to containers newly created by the current `compose up`;
+  pre-existing project containers are never deleted on a later service failure.
 
-## 2026-10-31 14:40 - change09
-- refactor: moved engine/ to backend/runtime/, samples and tests into backend/, machine/ and scripts/ into windows/; removed engine-arm/
-- refactor: root keeps only README.md, CHANGE.md, install.sh, start.sh, install.ps1, install.nsi, var/, backend/, gui/, docs/, windows/
-- chore: patches/ is local only and gitignored (supersedes the almost06 note about moving scripts into patches/)
-- fix: install.sh stages backend/samples/{blog,runner} to /var/lib/vcontainer/samples before building, so build_helper.sh accepts the source path
-- fix: run_container.sh trap quoting inside bash -c (pull and import), which caused "work: unbound variable"
-- fix: backend/tests/rest_cases.sh sends "memory" in every create payload, as POST /containers requires it
-- fix: backend/tests/rest_cases.sh reads the "output" key from the logs route, not "logs"
-- test: rest_cases.sh 6/6 passed after the restructure
-- feat: BlogDrop account page, admin users table with Reset/Delete, Admin tag, locked admin email
-- feat: BlogDrop duplicate username/email checks (case, dots, +tag)
-- feat: BlogDrop comment delete (commenter, blog author, admin) and per-user view counting
-- feat: dashboard Kill all containers and Kill server buttons
-- docs: README paths updated for the new layout
+## Compose start and stop
 
-## 2026-10-31 15:11 - change10
-- fix: GET /containers/{name}/metrics returns zeroed metrics instead of a 400 when the container dies during inspect (mountinfo read race)
+- Added `compose stop FILE`, which stops project containers in reverse dependency
+  order while preserving their metadata, IP assignments, volumes, and commands.
+- Added `compose start FILE`, which starts existing project containers in dependency
+  order and directs the user to `compose up` if any project container is missing.
 
-## 2026-10-31 15:58 - change11
-- feat: dashboard Home shows 4 number tiles and 4 labelled graphs (CPU/RAM, host/containers) with orange and red thresholds
-- feat: container details pane has Stop/Start and Delete buttons
-- fix: container grid is 3 per row, 2 at half width; Images has a Created column; roomier Images and Volumes tables
-- fix: dashboard active view persists across hard refresh; adjusted button spacing and health tick styling
+## Image-pull stream error handling
 
-## 2026-10-31 18:50 - change12
-- feat: added custom favicons and UI logos for dashboard, blog, runner, and BlogDrop
+- Replaced the GUI image-pull stream with a normal JSON operation because the GUI
+  waits for completion and did not display incremental progress.
+- Successful pulls now return HTTP 200 with `status: complete`; failures return an
+  appropriate HTTP error containing the helper's actual output instead of an HTTP
+  200 stream ending with a generic `Image pull failed` event.
 
-## 2026-10-31 20:16 - change13
-- feat: dashboard header logo; Quick start buttons read Run Blog and Run Runner; sample apps renamed Blog and Runner
-- fix: sample images keep their logos after install.sh rebuilds (Vcfile COPY of B.png and R.png)
-- fix: BlogDrop launch shows all four containers together (the backend still starts after the database)
-- fix: product name is vContainer in UI text, installer and docs
-- docs: README rewritten; runtime README refreshed; removed stale api, windows-client and architecture docs
-- chore: removed unused blog.tar and runner.tar LFS pointers and .mailmap
+## Completed before this metrics update
 
-## 2026-10-31 20:50 - change14
-- fix: POST /images/{name}/upload reads the request body (it wrote a str to a binary file)
-- fix: local import os in do_POST shadowed os, breaking upload cleanup and the nameless-container fallback
-- feat: Host and Origin check on every method; other sites get 403
-- fix: GET /containers/{name}/stats route added; duplicate and unreachable routes removed, including a GET that deleted volumes
-- fix: startup status cleanup now reads the flat engine.json
-- chore: engine.py duplicate stop() and import removed
-- test: REST case B1 checks the end of the page because logs return the last 15 lines
-- docs: README Images page text; Origin check in the security model
-- known limits: SESSION_SECRET and ADMIN_EMAIL are hardcoded in the BlogDrop launch env; /api/check has no rate limit; the NOPASSWD rule covers build_helper.sh run_chroot; published ports listen on all interfaces
+- Added read API endpoints for images, containers, details, metrics, logs, and
+  processes.
+- Added restricted container create, start, stop, and remove endpoints.
+- Added streamed image pulls and safe image deletion.
+- Added named-volume list, create, inspect, and safe removal endpoints.
+- Added named-volume mounts to container creation requests.
+- Split privileged access into narrowly scoped, root-owned helpers installed in
+  `/usr/local/sbin`.
+- Updated the API installer to deploy helpers, sudo policy, and the systemd
+  service together.
+
+## Metrics, streaming, and details update
+
+Completed in this update:
+
+- Add CPU usage counters and percentage calculated between samples.
+- Add memory usage/limit and process usage/limit.
+- Add network receive/transmit byte counters from the container network
+  namespace.
+- Add aggregated cgroup v2 block-I/O statistics.
+- Add Server-Sent Events streams for logs and periodic metrics.
+- Route `vcontainer.py logs -f NAME` through the API log stream.
+- Expand container details with image, timestamps, exit-code field, network
+  address, volumes, resource limits, and saved command.
+
+### Added endpoints
+
+```text
+GET /containers/{name}/metrics
+GET /containers/{name}/metrics/stream
+GET /containers/{name}/logs/stream
+```
+
+The stream endpoints use Server-Sent Events. The Windows command
+`vcontainer.py logs -f NAME` now consumes the API log stream.
+
+### Verification
+
+- Verified two point-in-time CPU samples and CPU percentage calculation.
+- Verified periodic metrics SSE events at a 0.5-second interval.
+- Verified live memory and process counts.
+- Verified bridge-network RX/TX counters.
+- Verified block-I/O fields from cgroup v2.
+- Verified live log lines through `vcontainer.py logs -f`.
+- Verified image, network address, limits, saved command, and lifecycle fields.
+- Verified create, start, and stop timestamps using a temporary container.
+- Removed all temporary containers, images, and volumes created by these tests.
+
+### Previous exit-code limitation
+
+Detached containers originally had no process waiting to collect their natural
+exit status. The API supervision update below resolves this for containers
+created or started through the running API service.
+
+## API process supervision update
+
+- API-created and restarted containers now run through a foreground C runtime
+  process monitored by the systemd-managed FastAPI service.
+- Natural container exit codes and stop times are written to `lifecycle.json`.
+- Container start now uses the same asynchronous supervision path as create.
+- Signal termination is reported using the conventional `128 + signal` exit
+  status, such as `143` for SIGTERM.
+- Create and start return HTTP 202 while execution continues in the background.
+- Restarting `vcontainer-api.service` still loses supervision of containers that
+  were already running. A separate persistent supervisor would be required to
+  preserve monitoring across API service restarts.
+
+## Per-process information update
+
+- Added the PID visible inside the container alongside the WSL host PID.
+- Added parent PIDs in both the container and host PID namespaces.
+- Added total CPU time and lifetime-average CPU percentage for each process.
+- Added resident memory usage in bytes from `/proc/HOST_PID/status`.
+- Added each process start time as a UTC timestamp.
+- Preserved process name, state, UID, and command arguments.
+- Process records are read only for PIDs assigned to the container's cgroup and
+  are sorted by container PID.
+
+### Process information verification
+
+- Verified `GET /containers/nginx-test/processes` with the Nginx master and
+  worker processes.
+- Verified container PID, host PID, parent PID, CPU, memory, and start-time
+  fields are returned successfully.
+
+## Web dashboard integration
+
+- Added the static HTML, CSS, and JavaScript dashboard to the FastAPI service.
+- Updated the dashboard for the current image and container response objects.
+- Connected container create, start, stop, remove, logs, metrics, and process
+  actions to their current API endpoints.
+- Replaced the unsupported image-build and published-port controls with refresh,
+  resource-limit, and bridge-address controls.
+- Escaped API-provided text before inserting it into generated HTML.
+- Verified the page and JavaScript return HTTP 200 and the live container list
+  is available from the dashboard backend.
+
+## Native localhost port publishing
+
+- Added validated `ports` mappings to container creation requests.
+- Added Docker-style `--publish HOST_PORT:CONTAINER_PORT` and `-p` parsing to
+  the Windows launcher.
+- Published services bind only to `127.0.0.1` through restricted, transient
+  systemd-managed `socat` units.
+- Saved mappings in each container's `ports.json` and exposed them through
+  container inspection and the dashboard.
+- Container start restores saved port mappings automatically.
+- Container stop, removal, and natural exit stop their forwarding units.
+- Routed Windows create, start, stop, and remove operations through FastAPI so
+  lifecycle and port behavior remain consistent.
+- Added a lock-protected hidden WSL keepalive launched by `vcontainer.py`, which
+  keeps API-supervised browser services available after the launcher exits.
+- Added `socat` to fresh installation dependencies and restored the dashboard's
+  published-port input and service link.
+
+### Port publishing verification
+
+- Created the official Nginx container with `--publish 8080:80`.
+- Verified `http://127.0.0.1:8080` returned HTTP 200 and the Nginx welcome page.
+- Verified one `vcontainer.py stop nginx-test` command stopped the container and
+  closed port 8080 without a manual WSL or systemctl command.
+- Verified `vcontainer.py start nginx-test` restored the saved mapping and the
+  Nginx page.
+
+SQLite is an embedded database and does not listen on a network port. SQLite
+database files should be persisted through a named volume instead of a published
+port.
+
+## Automatic bridge address allocation
+
+- A published port no longer requires the caller to provide `--network bridge`
+  and `--ip` manually.
+- The API selects the first unused address from `10.88.0.2` through
+  `10.88.0.254`, considering both saved containers and concurrent launches.
+- Explicit bridge addresses remain supported and duplicate addresses return an
+  HTTP 409 conflict.
+- The Windows launcher and dashboard now accept a port mapping by itself, for
+  example `vcontainer.py run nginx --name web -p 8080:80`.
+- Leaving the dashboard command empty now uses the image's configured default
+  command instead of forcing `/bin/sh`.
+
+## Persistent API container logs
+
+- Added a C runtime `--log` option that redirects container stdout and stderr to
+  its persistent `container.log` without detaching the runtime supervisor.
+- API-created and API-restarted containers enable `--log` automatically.
+- Added `log` as a friendly alias for the existing `logs` and `logs -f` Windows
+  launcher commands.
+- Fixed the image configuration JSON error handler typo in the privileged
+  control helper.
+
+## Versioned runtime helper package
+
+- Removed privileged helper sources from the main application tree.
+- Added a shared installer module that downloads helper release `v0.1.0` from
+  GitHub and verifies its pinned SHA-256 checksum before extraction.
+- Extraction allowlists the four expected helper filenames, limits archive
+  size, rejects duplicate and unsafe paths, and removes temporary files.
+- Updated both `setup.py` and `setup_api_service.py` to install helpers from the
+  verified release rather than `api/helpers`.
+
+## Container environment variables and CLI aliases
+
+- Added repeatable `-e` and `--env NAME=VALUE` parsing to the Windows launcher.
+- Added API validation for environment names, NUL bytes, value length, and the
+  maximum number of variables.
+- Added `-v` as an alias for named-volume mounts and `-d` as a compatibility
+  alias; API-launched containers remain supervised in the background by default.
+- Added OCI image environment loading in the separate helper project, with
+  explicit user variables overriding image defaults.
+- Added C runtime validation and `setenv()` application before the container
+  command is executed.
+- Environment values are not added to container inspection responses.
+- Configured Windows launcher output as UTF-8 with replacement fallback so
+  application logs containing Unicode characters cannot crash the CLI.
+
+## Compose executable integration
+
+- Added the native `compose.exe` parser built from `compose-go` as the Compose
+  validation and normalization layer for the Windows launcher.
+- Added `vcontainer.py compose config FILE` to print the normalized project.
+- Added `compose up` translation for images, commands, environment variables,
+  named volumes, published TCP ports, container names, and static IPv4 addresses.
+- Added automatic creation of top-level named volumes when they do not exist.
+- Added basic `depends_on` topological ordering with unknown-dependency and
+  circular-dependency validation; `down` uses the reverse dependency order.
+- Added `compose down`, which stops and removes services in reverse order.
+- Compose bind mounts, anonymous volumes, UDP ports, builds, health-based startup,
+  and automatic container-name DNS are not yet supported.
+
+## Standard container devices
+
+- Fixed the empty `/dev` runtime setup by mounting only the host's standard
+  `null`, `zero`, `random`, and `urandom` devices into the private container
+  `/dev` tmpfs.
+- This allows non-root image processes such as MySQL to use `/dev/null` without
+  exposing the host's complete `/dev` tree.
+- Added `/dev/fd`, `/dev/stdin`, `/dev/stdout`, and `/dev/stderr` links to the
+  container's private `/proc/self/fd`, supporting entrypoint process substitution.
+
+## BlogDrop four-container deployment
+
+- Added and validated a Compose configuration for MySQL, a Node backend, a
+  static Nginx frontend, and an Nginx gateway published on localhost port 8080.
+- Added dependency ordering, fixed bridge addresses, persistent data/source
+  volumes, database initialization SQL, and gateway reverse-proxy configuration.
+- Separated static frontend serving from the Node API and bound the backend to
+  `0.0.0.0:3000`.
+- Populated all WSL volumes and initialized the MySQL schema and application user.
+- Verified the frontend returns HTTP 200 and `/api/health` returns HTTP 200 with
+  a successful database connection.
+- The Node dependency audit currently reports one high-severity dependency issue;
+  it was reported but not automatically modified during deployment.
+
+## REST integration tests
+
+- Added `tests/rest_cases.sh`, adapted from the separate test project to the
+  current FastAPI service on port 8010 and its current JSON response fields.
+- Removed dependencies on the custom `blog` and `runner` images; the suite uses
+  Alpine by default and supports `VCONTAINER_TEST_IMAGE` and
+  `VCONTAINER_API_URL` overrides.
+- Added checks for command execution and logs, stop/start lifecycle,
+  environment variables, root filesystem isolation, hostname isolation, and
+  memory-limit enforcement.
+- Added bounded polling, cleanup before and after each case, API/image
+  preflight checks, and a final pass/fail summary.
+
+## Installation verification
+
+- Added `tests/verify_install.sh`, a read-only verification command for cgroup
+  v2, overlayfs, installed runtime/helper files, the API systemd service,
+  storage directories, the health endpoint, and required Linux programs.
+
+## Runtime, Compose, installer, and dashboard hardening
+
+- Completed the private OCI-style device layout with `/dev/full`, `/dev/tty`,
+  a private `devpts` mount and `/dev/ptmx`, `/dev/shm`, and `/dev/mqueue` in
+  both Windows/WSL and ARM source trees.
+- Kept the standard descriptor links and device bind mounts isolated from the
+  rest of the host `/dev` tree.
+- Made custom seccomp deny lists additive to the mandatory default deny list;
+  custom rules can no longer accidentally re-enable mount, namespace, ptrace,
+  reboot, or kernel-module operations.
+- Added API startup reconciliation for saved published ports belonging to
+  containers that remain running across an API service restart.
+- Added project-scoped default Compose container names, `compose ps`, and
+  reverse-order rollback when a multi-service `compose up` fails partway.
+- Simplified `compose down` to use the API's stop-and-remove DELETE behavior.
+- Made `setup.py` run the read-only installation verification automatically.
+- Ported the useful design patterns from the separate test dashboard: a
+  responsive sidebar, Home summary, dark/light themes, container cards,
+  detailed resources/logs/processes, image pull/delete, environment input,
+  and published-service links. Vcfile build/upload controls were intentionally
+  excluded.
+- Expanded the REST suite with direct deletion of a running container and a
+  combined standard-device, virtual-filesystem, and seccomp check.
+- Verified both C source trees compile with `-Wall -Wextra -Werror`, installer
+  checks pass 20/20, REST checks pass 8/8, dashboard assets return HTTP 200,
+  the BlogDrop Compose project reports all four services running, port 8080
+  survives an API restart, and log-stream cancellation leaves no helper
+  process behind.
+
+### Privileged-helper follow-up
+
+- Persistent final cgroup statistics, durable transitional states, automatic
+  container-name DNS, bind mounts, health-aware Compose dependencies, and
+  capability/device-cgroup policy require changes to the separately versioned
+  privileged helper package. They were not faked in the unprivileged API or
+  silently substituted for the pinned helper release.
+
+## Lightweight performance benchmark
+
+- Added `tests/lightweight_benchmark.ps1`, which measures API memory and
+  latency, warm Alpine startup, incremental memory for idle containers,
+  BlogDrop HTTP latency, runtime/API installation size, and image/state size.
+- The benchmark always deletes its temporary containers and writes a reusable
+  Markdown report to `performance_report.md`.
+- On the current warm WSL system with four BlogDrop containers already running,
+  the API used 60.64 MiB, warm Alpine startup averaged 172.94 ms, five idle
+  Alpine containers added approximately 4.27 MiB to the WSL working set, and
+  the compiled runtime binary was 120.31 KiB.
+- The current WSL instance exposes 12 processors with no configured memory cap;
+  these results establish a baseline but are not presented as a controlled
+  one-core/one-gigabyte low-end-machine result.
+
+## Controlled low-end benchmark
+
+- Added `tests/controlled_low_end_benchmark.ps1`. It temporarily applies a
+  1 GiB RAM, one-processor, 256 MiB swap WSL profile, restarts WSL, runs the
+  benchmark, and restores the user's original `.wslconfig` in a `finally`
+  block. The machine had no original `.wslconfig`, and that absence was
+  restored after the test.
+- Improved benchmark diagnostics so failed API calls include their HTTP method
+  and path, and made cleanup retry bounded and explicit.
+- Startup samples now use a two-second workload and allow it to exit naturally;
+  this measures startup without mixing forced-stop cgroup teardown into the
+  timing result.
+- Under the controlled profile, the API used 35.23 MiB current and 41.83 MiB
+  peak memory. Container-list requests averaged 62.79 ms (79.45 ms p95), warm
+  Alpine startup averaged 317.09 ms (409.20 ms p95), and five idle Alpine
+  containers used 1.55 MiB in their cgroups.
+- The compiled runtime remained 120.31 KiB and its installed runtime directory
+  was 0.14 MiB. The Python API environment occupied 37.26 MiB; downloaded
+  images, at 1174.23 MiB, are the main disk-space cost.
+- The stress run exposed a reproducible lifecycle weakness: forced deletion of
+  a newly started container can observe an empty cgroup before it is removable
+  on a single CPU. The API now waits for the stopped state and retries metadata
+  removal, but the privileged runtime/helper still needs an authoritative
+  teardown acknowledgement to eliminate this race completely.
+- All `perf-*` containers left by failed stress iterations were removed after
+  WSL restarted. No benchmark container remains.
+
+## Dashboard visual refresh
+
+- Integrated the supplied dashboard's visual language into the served GUI
+  without importing its incompatible API calls.
+- Added gradient navigation, grouped sidebar controls, colored summary tiles,
+  aggregate CPU/memory/process gauges, image markers, richer container cards,
+  and per-container memory and process meters.
+- Preserved the existing Vcontainer API contract for container names, metrics,
+  logs, image pulling, resource limits, environment variables, port mappings,
+  and lifecycle actions.
+- Unsupported VC File build, image upload/download, `/system`, `/stats`, and
+  exec-console controls were intentionally not introduced.
+- Fixed GUI container launches when Uvicorn runs directly on Windows. Windows
+  now uses `subprocess.Popen` for the long-running WSL control process because
+  the active Uvicorn event loop can reject `asyncio.create_subprocess_exec`.
+  Native Linux/WSL service execution retains the asyncio subprocess path.
+- Startup supervision now logs exception types and propagates failures that
+  happen before a container reaches `running`, preventing a misleading 202
+  response followed by a missing container.
+
+## Live resource-limit updates
+
+- Added `PATCH /containers/{name}/resources` with narrowly validated memory,
+  PID, and CPU quota/period fields.
+- Extended the privileged control helper with a `resources NAME` operation.
+  It updates `memory.max` for a running container and atomically updates both
+  the readable container configuration and the NUL-delimited saved launch
+  arguments so the new limit survives stop/start cycles.
+- Added an **Edit resources** dialog to the container-details card for memory,
+  PID limit, and CPU quota/period.
+- Resource editing is available only for stopped containers. The GUI hides the
+  action while running, and both the API and privileged helper independently
+  reject running-container updates with a clear stop-first error.
+- Confirmed `blogdrop-db` was at 262,066,176 of 262,144,000 bytes (effectively
+  100% of its old 250M cgroup limit). A 512M trial also reached 496 MiB during
+  InnoDB initialization, so its persistent/live limit is now 1G
+  (1,073,741,824 bytes).
+- Raised `blogdrop-db` from 64 to 128 PIDs and from half a CPU
+  (`50000/100000`) to one CPU (`100000/100000`). All three live cgroup values
+  and their saved restart values were verified.
+- Development setup now prefers the separately checked-out local helper package
+  when present, avoiding both stale release helpers and unnecessary downloads.
+  A new helper release must be published before standalone installations can
+  receive this operation without the sibling helper checkout.
+# Python package restructuring
+
+- Renamed the FastAPI package to `vcontainer_api`.
+- Split API routes into container, image, system, and volume routers.
+- Split API metrics and container supervision into service modules.
+- Moved shared API validation and runtime error translation to `dependencies.py`.
+- Kept the root Windows `vcontainer.py` as a compatible launcher.
+- Moved the Windows implementation into the `vcontainer_cli` package.
+- Split Windows constants, API transport, errors, and run parsing into focused modules.
+- Preserved all API paths, CLI commands, and launcher behavior.
+- Fixed the metrics SSE endpoint so it returns its streaming response.
+- Consolidated the Windows CLI and desktop application into one `uv` project.
+- Moved Windows Python packages under `Vcontainer(win)/src`.
+- Moved the C engine under `Vcontainer(win)/engine`.
+- Moved the Compose executable and sources under `Vcontainer(win)/vendor`.
+- Moved Windows launch scripts under `Vcontainer(win)/scripts` while retaining
+  root compatibility launchers.
+- Moved the installable WSL helper repository under `helper/vcontainer-helper`.
+- Added API unit tests and repository-level architecture documentation.
+- Rewrote the root README as an installation, usage, command, development, and
+  troubleshooting guide for the reorganized repository.
+- Expanded `docs/architecture.md` with component boundaries, runtime flows,
+  storage, networking, Compose behavior, privilege boundaries, and known limits.
+- Documented standalone PyInstaller builds for the Windows CLI and GUI.
+- Added repository and Windows-project ignore rules for Python environments,
+  caches, PyInstaller work files, and generated executables.
+- Added `scripts/vcontainer-cli-global.ps1` and
+  `scripts/vcontainer-cli-unglobal.ps1` for adding or removing the standalone
+  commands from the current Windows user's `PATH`.
+- Fixed local WSL helper discovery after moving `vcontainer-helper` into the
+  repository, avoiding an unnecessary release download during setup.
+- Rebuilt `vcontainer-helpers-v0.2.0.zip` from the active helper sources and
+  updated the installer checksum.
+
+# Compose service replacement
+
+- Added `compose up FILE --service SERVICE --replace` to recreate one changed
+  service without stopping the rest of the Compose project.
+- Replacement removes only the selected container. Named volumes are preserved
+  and reused by the recreated container.
+
+# Compose resource limits
+
+- Compose services now pass `mem_limit`, `pids_limit`, and `cpus` into the
+  Vcontainer API when a container is created.
+- `deploy.resources.limits` is also accepted as a fallback.
+- BlogDrop now has explicit CPU, memory, and process limits for every service.
+
+# Faster first installation
+
+- Removed the unused Windows API environment. The API environment is now
+  created only inside WSL, where the service runs.
+- Production setup uses `uv sync --locked --no-dev` for the Windows client and
+  WSL API, avoiding PyInstaller, pytest, Ruff, and their dependencies.
+- Curl and certificates are installed in the first Linux package transaction,
+  avoiding a second `apt-get update` during API setup.
+- APT uses `--no-install-recommends` to skip unrelated optional packages.
+
+# Parizval layout migration
+
+- Updated `gui/` from `penguintypes/Virtualised-Container` on GitHub and kept
+  the previous files under `backend/legacy/gui-before-github`.
+- Restored the PyWebView application titlebar, window controls, drag region,
+  and edge-resize bridge that were absent from the downloaded GUI.
+- Added image size and creation timestamps to the restricted image-listing
+  response so the GUI Images table displays numeric information.
+- Removed the GUI Quick Start card and its Blog, Runner, and BlogDrop-specific
+  launch code.
+- Removed the GUI Kill server control and its unused request handler.
+- Made the frameless desktop application and custom titlebar fill the complete
+  PyWebView client area without gaps at the window edges.
+- Renamed `windows/client` to `client`, removed the unused machine experiment,
+  and removed the duplicate `vcontainer.ps1` wrappers.
+- Removed the obsolete `install.sh`, `start.sh`, and `install.nsi` entry points;
+  installation now starts with `setup.py` or its `install.ps1` wrapper.
+- Preserved the Parizval dashboard in `gui/`.
+- Moved the current C engine to `backend/runtime` and the FastAPI project to
+  `backend/api`.
+- Added the restricted WSL helpers under `backend/helpers`.
+- Moved the Windows CLI and desktop projects under `windows/client`.
+- Updated setup to install the preserved GUI alongside the WSL API service.
+- Added API compatibility for Parizval live metrics and dashboard launch
+  payloads.
+- Archived the earlier Parizval Python backend under `backend/legacy`.
+

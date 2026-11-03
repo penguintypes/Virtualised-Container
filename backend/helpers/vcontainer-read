@@ -1,0 +1,417 @@
+#!/usr/bin/python3
+import json
+import os
+import re
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+GROUPS = Path("/sys/fs/cgroup/vcontainer")
+STATES = Path("/var/lib/vcontainer/containers")
+
+
+def read(path):
+    try:
+        return path.read_text().strip()
+    except FileNotFoundError:
+        return None
+
+
+def parse_config(path):
+    values = {}
+    commands = []
+    volumes = []
+    for line in (read(path) or "").splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key == "command_arg":
+            commands.append(value)
+        elif key == "volume":
+            source, separator, target = value.partition(":")
+            volume = Path(source).parent.name if separator else source
+            volumes.append({"name": volume, "source": source, "target": target})
+        else:
+            values[key] = value
+    values["command"] = commands
+    values["volumes"] = volumes
+    return values
+
+
+def parse_launch(path):
+    try:
+        arguments = [item.decode("utf-8", errors="replace")
+                     for item in path.read_bytes().split(b"\0") if item]
+    except FileNotFoundError:
+        return []
+    return arguments
+
+
+def option(arguments, name):
+    try:
+        index = arguments.index(name)
+        return arguments[index + 1]
+    except (ValueError, IndexError):
+        return None
+
+
+def cpu_statistics(group):
+    statistics = {}
+    for line in (read(group / "cpu.stat") or "").splitlines():
+        fields = line.split()
+        if len(fields) == 2 and fields[1].isdigit():
+            statistics[fields[0]] = int(fields[1])
+    return statistics
+
+
+def io_statistics(group):
+    totals = {key: 0 for key in ("rbytes", "wbytes", "rios", "wios", "dbytes", "dios")}
+    for line in (read(group / "io.stat") or "").splitlines():
+        for field in line.split()[1:]:
+            key, separator, value = field.partition("=")
+            if separator and key in totals and value.isdigit():
+                totals[key] += int(value)
+    return totals
+
+
+def network_statistics(pids):
+    if not pids:
+        return {"rx_bytes": 0, "tx_bytes": 0}
+    try:
+        lines = Path(f"/proc/{pids[0]}/net/dev").read_text().splitlines()[2:]
+    except FileNotFoundError:
+        return {"rx_bytes": 0, "tx_bytes": 0}
+    for line in lines:
+        interface, separator, values = line.partition(":")
+        fields = values.split()
+        if separator and interface.strip() == "eth0" and len(fields) >= 9:
+            return {"rx_bytes": int(fields[0]), "tx_bytes": int(fields[8])}
+    return {"rx_bytes": 0, "tx_bytes": 0}
+
+
+def lifecycle(state, status):
+    path = state / "lifecycle.json"
+    try:
+        data = json.loads(path.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        config = state / "config"
+        created = None
+        try:
+            created = datetime.fromtimestamp(
+                config.stat().st_mtime, timezone.utc
+            ).isoformat().replace("+00:00", "Z")
+        except FileNotFoundError:
+            pass
+        data = {"created_at": created, "started_at": None,
+                "stopped_at": None, "exit_code": None}
+    if status == "running":
+        data["stopped_at"] = None
+    return data
+
+
+def published_ports(state):
+    try:
+        data = json.loads((state / "ports.json").read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+    ports = data.get("ports", []) if isinstance(data, dict) else []
+    return ports if isinstance(ports, list) else []
+
+
+def inspect(name):
+    if name in (".", "..") or not re.fullmatch(r"[A-Za-z0-9_.-]+", name):
+        raise ValueError("Invalid name")
+
+    group = GROUPS / name
+    if not group.is_dir() and not (STATES / name).is_dir():
+        raise ValueError("Container not found")
+
+    pids = (read(group / "cgroup.procs") or "").split()
+    host_pids = [int(pid) for pid in pids]
+    status = "running" if pids else "stopped"
+    state = STATES / name
+    config = parse_config(state / "config")
+    launch = parse_launch(state / "launch.argv")
+    data = {
+        "name": name,
+        "status": status,
+        "host_pids": host_pids,
+        "image": config.get("image") or None,
+        "rootfs": config.get("rootfs") or None,
+        "hostname": option(launch, "--hostname") or "vcontainer",
+        "network_address": option(launch, "--ip"),
+        "ports": published_ports(state),
+        "volumes": config.get("volumes", []),
+        "command": config.get("command", []),
+        "resource_limits": {
+            "memory_max": config.get("memory_max"),
+            "pids_max": config.get("pids_max"),
+            "cpu_max": config.get("cpu_max"),
+        },
+    }
+    data.update(lifecycle(state, status))
+    for key, file in {
+        "memory_current": "memory.current",
+        "memory_max": "memory.max",
+        "pids_current": "pids.current",
+        "pids_max": "pids.max",
+        "cpu_max": "cpu.max",
+    }.items():
+        data[key] = read(group / file)
+    data["cpu"] = cpu_statistics(group)
+    data["block_io"] = io_statistics(group)
+    data["network"] = network_statistics(host_pids)
+    return data
+
+def boot_time():
+    for line in Path("/proc/stat").read_text().splitlines():
+        fields = line.split()
+
+        if len(fields) == 2 and fields[0] == "btime":
+            return int(fields[1])
+
+    raise OSError("Could not read system boot time")
+
+def parse_process_stat(path):
+    txt = path.read_text ()
+
+
+    end = txt.rfind(")")
+    if end == -1:
+        raise ValueError("Invalid process stat")
+
+    fields = txt[end + 2:].split()
+
+    if len(fields) < 20:
+        raise ValueError("Invalid process stat")
+
+    return {
+        "host_parent_pid": int(fields[1]),
+        "user_ticks": int(fields[11]),
+        "system_ticks": int(fields[12]),
+        "start_ticks": int(fields[19]), 
+    }
+
+def memory_bytes(status):
+    fields = status.get("VmRSS", "").split()
+
+    if len(fields) != 2 or not fields[0].isdigit():
+        return 0
+    value = int(fields[0])
+    unit = fields[1].lower()
+
+
+    if unit == "kb":
+        return value * 1024
+    if unit == "mb":
+        return value * 1024 * 1024
+
+    return value
+
+def processes(name):
+    container = inspect(name)
+    process_data = []
+
+    ticks_per_second = os.sysconf("SC_CLK_TCK")
+    started_at_boot = boot_time()
+    now = time.time()
+
+    for host_pid in container["host_pids"]:
+        process = Path("/proc") / str(host_pid)
+
+        try:
+            status_text = (process / "status").read_text()
+            command_bytes = (process / "cmdline").read_bytes()
+            statistics = parse_process_stat(process / "stat")
+        except (FileNotFoundError, ProcessLookupError, ValueError):
+            # The process may exit while information is being collected.
+            continue
+
+        status = {}
+
+        for line in status_text.splitlines():
+            if ":" not in line:
+                continue
+
+            key, value = line.split(":", 1)
+            status[key] = value.strip()
+
+        command = [
+            argument.decode("utf-8", errors="replace")
+            for argument in command_bytes.split(b"\0")
+            if argument
+        ]
+
+        uid_fields = status.get("Uid", "").split()
+        namespace_pids = status.get("NSpid", "").split()
+
+        if namespace_pids and all(pid.isdigit() for pid in namespace_pids):
+            container_pid = int(namespace_pids[-1])
+        else:
+            container_pid = host_pid
+
+        cpu_ticks = (
+            statistics["user_ticks"]
+            + statistics["system_ticks"]
+        )
+        cpu_seconds = cpu_ticks / ticks_per_second
+
+        process_start = (
+            started_at_boot
+            + statistics["start_ticks"] / ticks_per_second
+        )
+        elapsed = max(now - process_start, 0.001)
+
+        process_data.append({
+            "container_pid": container_pid,
+            "host_pid": host_pid,
+            "host_parent_pid": statistics["host_parent_pid"],
+            "name": status.get("Name"),
+            "state": status.get("State"),
+            "uid": int(uid_fields[0]) if uid_fields else None,
+            "cpu_time_seconds": round(cpu_seconds, 3),
+            "cpu_percent": round(
+                cpu_seconds / elapsed * 100,
+                2,
+            ),
+            "memory_bytes": memory_bytes(status),
+            "start_time": datetime.fromtimestamp(
+                process_start,
+                timezone.utc,
+            ).isoformat().replace("+00:00", "Z"),
+            "command": command,
+        })
+
+    host_to_container = {
+        process["host_pid"]: process["container_pid"]
+        for process in process_data
+    }
+
+    for process in process_data:
+        process["parent_pid"] = host_to_container.get(
+            process["host_parent_pid"],
+            0,
+        )
+
+    return sorted(
+        process_data,
+        key=lambda process: process["container_pid"],
+    )
+
+
+def tree_disk_bytes(path):
+    """Return allocated bytes without following links or mounted merged roots."""
+    total = 0
+    pending = [path]
+    visited = set()
+    while pending:
+        current = pending.pop()
+        try:
+            status = current.lstat()
+        except FileNotFoundError:
+            continue
+        identity = (status.st_dev, status.st_ino)
+        if identity in visited:
+            continue
+        visited.add(identity)
+        total += status.st_blocks * 512
+        if current.is_dir() and not current.is_symlink():
+            try:
+                pending.extend(current.iterdir())
+            except (FileNotFoundError, PermissionError):
+                continue
+    return total
+
+
+def image_details(path):
+    rootfs = path / "rootfs"
+    created = datetime.fromtimestamp(
+        path.stat().st_mtime,
+        timezone.utc,
+    ).isoformat().replace("+00:00", "Z")
+    return {
+        "name": path.name,
+        "rootfs": str(rootfs),
+        "size": tree_disk_bytes(rootfs),
+        "created": created,
+    }
+
+
+def container_disk_usage():
+    containers = []
+    if STATES.is_dir():
+        for state in sorted(path for path in STATES.iterdir() if path.is_dir()):
+            used = 0
+            for child in state.iterdir():
+                if child.name == "overlay":
+                    used += tree_disk_bytes(child / "upper")
+                else:
+                    used += tree_disk_bytes(child)
+            containers.append({"name": state.name, "used_bytes": used})
+    return {
+        "used_bytes": sum(item["used_bytes"] for item in containers),
+        "container_count": len(containers),
+        "containers": containers,
+    }
+
+def main():
+    args = sys.argv[1:]
+
+    if args == ["disk"]:
+        return container_disk_usage()
+
+    if args == ["images"]:
+        folder = Path("/var/lib/vcontainer/images")
+        if not folder.is_dir():
+            return []
+        return [
+            image_details(path)
+            for path in sorted(folder.iterdir())
+            if (path / "rootfs").is_dir()
+        ]
+
+    if args == ["ps"]:
+        names = set()
+        for folder in (GROUPS, STATES):
+            if folder.is_dir():
+                names.update(p.name for p in folder.iterdir() if p.is_dir())
+        return [inspect(name) for name in sorted(names)]
+
+    if len(args) != 2 or args[0] not in (
+        "inspect",
+        "logs",
+        "processes", "logs-follow",
+    ):
+        raise ValueError(
+            "Use: images, ps, inspect NAME, logs NAME, "
+            "logs-follow NAME, or processes NAME"
+        )
+
+    action, name = args
+    data = inspect(name)
+
+    if action == "logs-follow":
+        log = STATES / name / "container.log"
+        if not log.is_file():
+            raise ValueError("No logs found")
+        if data["host_pids"]:
+            os.execv("/usr/bin/tail", ["tail", "-n", "100", "-f",
+                                      f"--pid={data['host_pids'][0]}", str(log)])
+        os.execv("/usr/bin/tail", ["tail", "-n", "100", str(log)])
+
+    if action == "processes":
+        return processes(name)
+    if action == "logs":
+        output = read(STATES / name / "container.log")
+        if output is None:
+            raise ValueError("No logs found")
+        return output
+    return data
+
+if __name__ == "__main__":
+    try:
+        print(json.dumps(main()))
+    except (ValueError, OSError) as error:
+        print(error, file=sys.stderr)
+        sys.exit(1)

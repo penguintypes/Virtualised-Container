@@ -1,0 +1,34 @@
+[project]
+name = "vcontainer-cli"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "NodyHody06", email = "166039587+NodyHody06@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "pywebview>=6.2.1",
+]
+
+[project.scripts]
+vcontainer = "vcontainer_cli.cli:main"
+vcontainer-gui = "vcontainer_desktop.vcontainer_gui:main"
+
+[build-system]
+requires = ["uv_build>=0.13.0,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pyinstaller>=6.22.3",
+    "pytest>=9.2.0",
+    "ruff>=0.17.3",
+]
+
+[tool.ruff]
+line-length = 79
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "N", "SIM", "W"]

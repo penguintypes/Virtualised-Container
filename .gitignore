@@ -1,13 +1,19 @@
-var/engine.json
-.vcbuild.json
-*:Zone.Identifier
-__pycache__/
-*.pyc
-verify.log
-install.exe
-backend/runtime/build/vcontainer
-vcontainer_source_dump.txt
-*.bak*
-node_modules/
-*.tgz
-patches/
+# Python
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.ruff_cache/
+**/.venv/
+.uv-cache/
+
+# PyInstaller
+client/build/
+client/vcontainer/
+client/vcontainer-gui/
+client/vcontainer.exe
+client/vcontainer-gui.exe
+
+# Local reports and editor files
+*.log
+.idea/
+.vscode/

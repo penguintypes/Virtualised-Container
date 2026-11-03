@@ -1,0 +1,51 @@
+<!doctype html>
+<meta charset="utf-8"><title>Blog</title>
+<link rel="icon" href="B.png" />
+<style>
+body{font:16px system-ui,sans-serif;margin:0;padding:2rem;box-sizing:border-box;height:100vh;background:#f5f1e8;color:#24313b;display:flex;flex-direction:column;overflow:hidden}
+main{display:grid;grid-template-columns:1fr 1fr;gap:2rem;flex:1;min-height:0}
+.col{display:flex;flex-direction:column;gap:1rem;min-height:0}
+input{padding:.8rem;border:1px solid #ccd2d2;border-radius:6px;font-size:16px}
+textarea,article{flex:1;min-height:0;overflow:auto;box-sizing:border-box;padding:1.5rem;background:white;border:1px solid #ccd2d2;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,0.02)}
+button{padding:.8rem 1.5rem;background:#176b87;color:white;border:0;border-radius:6px;cursor:pointer;font-weight:600;transition:0.2s}
+button:hover{background:#115166}
+small{color:#68757b;display:block;margin-bottom:2rem}
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:0.2s}
+.modal-backdrop.show{opacity:1;pointer-events:auto}
+.modal{background:white;padding:2.5rem;border-radius:8px;width:320px;text-align:center;box-shadow:0 10px 25px rgba(0,0,0,0.1)}
+.modal h3{margin-top:0;font-size:1.4rem;color:#176b87}
+.modal-actions{display:flex;gap:1rem;margin-top:2rem;justify-content:center}
+.btn-cancel{background:#e0e5e5;color:#24313b}
+.btn-cancel:hover{background:#ccd2d2}
+</style>
+<h1><img src="B.png" style="height: 34px; object-fit: contain; vertical-align: middle; margin-right: 12px; margin-bottom: 4px;" /> Blog</h1><small>Alpine + Python + SQLite</small>
+<main>
+  <div class="col">
+    <input id="name" value="welcome">
+    <textarea id="edit"># Namespaces, not magic
+
+This post was built from a **Vcfile**.</textarea>
+    <div><button onclick="showConfirm()">Save post</button></div>
+  </div>
+  <article id="preview"></article>
+</main>
+<div id="modal" class="modal-backdrop">
+  <div class="modal">
+    <h3>Confirm Save</h3>
+    <p>Are you sure you want to overwrite this post?</p>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="hideConfirm()">Cancel</button>
+      <button onclick="doSave()">Yes, Save</button>
+    </div>
+  </div>
+</div>
+<script>
+const $=x=>document.querySelector(x);
+const render=s=>s.split('\n').map(x=>x.startsWith('# ')?'<h2>'+x.slice(2)+'</h2>':x.replace(/\*\*(.*?)\*\*/g,'<b>$1</b>')||'<br>').join('');
+let saving=false;
+async function poll(){ if(saving)return; try{const r=await fetch('/posts/'+encodeURIComponent($('#name').value));if(r.ok && document.activeElement !== $('#edit')){const t=await r.text();if(t)$('#edit').value=t;}}catch(e){} $('#preview').innerHTML=render($('#edit').value)}
+function showConfirm() { $('#modal').classList.add('show'); }
+function hideConfirm() { $('#modal').classList.remove('show'); }
+async function doSave(){saving=true;hideConfirm();await fetch('/posts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:$('#name').value,body:$('#edit').value})});saving=false;poll()}
+$('#edit').oninput=()=>$('#preview').innerHTML=render($('#edit').value);poll();setInterval(poll,1000)
+</script>

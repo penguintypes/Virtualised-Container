@@ -1,0 +1,21 @@
+import os 
+import subprocess
+import sys
+from pathlib import Path
+
+distro = os.getenv("VCONTAINER_WSL_DISTRO", "Ubuntu")
+user = os.getenv("VCONTAINER_WSL_USER", "vcdev")
+
+script = str(Path(__file__).resolve().parent / "run_container.sh")
+wsl = ["wsl","-d", distro, "-u", user, "--exec"]
+
+
+path = subprocess.check_output(
+	wsl + ["wslpath", "-u", script], text=True).strip()
+
+
+if "--debug" in sys.argv:
+    print("Arguments:", sys.argv[1:], flush=True)
+    print("Command:", wsl + ["bash", path, *sys.argv[1:]], flush=True)
+
+sys.exit(subprocess.call(wsl + ["bash", path, *sys.argv[1:]]))
