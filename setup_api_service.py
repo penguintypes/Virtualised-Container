@@ -21,10 +21,12 @@ wrapper="$5"
 image_control="$6"
 volume_control="$7"
 gui_source="$8"
+compose_helper="$9"
 test "$(id -u "$user")" -ne 0
 home=$(getent passwd "$user" | cut -d: -f6)
 group=$(id -gn "$user")
 api_dir="$home/vcontainer-api"
+install -d -o "$user" -g "$group" -m 0700 /var/lib/vcontainer/compose
 install -o root -g root -m 0755 "$helper" /usr/local/sbin/vcontainer-read
 sed -i 's/\r$//' /usr/local/sbin/vcontainer-read
 python3 -m py_compile /usr/local/sbin/vcontainer-read
@@ -39,6 +41,9 @@ sed -i 's/\r$//' /usr/local/sbin/vcontainer-volume-control
 python3 -m py_compile /usr/local/sbin/vcontainer-volume-control
 install -o root -g root -m 0755 "$wrapper" /opt/vcontainer/bin/vcontainer-cli
 sed -i 's/\r$//' /opt/vcontainer/bin/vcontainer-cli
+install -d -o root -g root -m 0755 /opt/vcontainer/libexec
+install -o root -g root -m 0755 \
+    "$compose_helper" /opt/vcontainer/libexec/vcontainer-compose
 
 policy=$(mktemp)
 trap 'rm -f "$policy"' EXIT
@@ -140,6 +145,7 @@ def install():
     root = Path(__file__).resolve().parent
     source = root / "backend" / "api"
     wrapper = root / "backend" / "runtime" / "run_container.sh"
+    compose_helper = root / "backend" / "helpers" / "vcontainer-compose"
     gui = root / "gui"
     for name in (
         "pyproject.toml",
@@ -148,7 +154,7 @@ def install():
     ):
         if not (source / name).is_file():
             raise SystemExit(f"Missing API source: {source / name}")
-    for path in (wrapper, gui / "index.html"):
+    for path in (wrapper, compose_helper, gui / "index.html"):
         if not path.is_file():
             raise SystemExit(f"Missing installation source: {path}")
     wsl = ["wsl.exe", "-d", distro, "-u", "root", "--exec"]
@@ -160,6 +166,9 @@ def install():
     ).strip()
     linux_gui = subprocess.check_output(
         wsl + ["wslpath", "-a", "-u", str(gui)], text=True,
+    ).strip()
+    linux_compose_helper = subprocess.check_output(
+        wsl + ["wslpath", "-a", "-u", str(compose_helper)], text=True,
     ).strip()
     with downloaded_helpers() as helpers:
         linux_helpers = subprocess.check_output(
@@ -174,6 +183,7 @@ def install():
                 f"{linux_helpers}/vcontainer-image-control",
                 f"{linux_helpers}/vcontainer-volume-control",
                 linux_gui,
+                linux_compose_helper,
             ],
             input=SCRIPT.replace("\r\n", "\n").encode("utf-8"),
             check=True,

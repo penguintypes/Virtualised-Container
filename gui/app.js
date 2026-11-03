@@ -338,8 +338,10 @@ async function renderHome() {
   );
   const running = runningContainers.length;
   $("#title").textContent = "Home";
-  $("#actions").innerHTML =
-    '<button class="default" data-action="run">+ Run container</button>';
+  $("#actions").innerHTML = `
+	  <button class="default" data-action="run">+ Run container</button>
+	  <button data-action="compose">Compose</button>
+	`;
   $("#content").innerHTML = `<div class="container-summary">
       <article class="card"><span>Running</span><strong>${running}</strong></article>
       <article class="card"><span>Stopped</span><strong>${containers.length - running}</strong></article>
@@ -363,8 +365,10 @@ async function renderContainers() {
       }),
   );
   $("#title").textContent = "Containers";
-  $("#actions").innerHTML =
-    '<button class="default" data-action="run">+ Run container</button>';
+  $("#actions").innerHTML = `
+    <button class="default" data-action="run">+ Run container</button>
+    <button data-action="compose">Compose</button>
+  `;
   $("#content").innerHTML =
     `<div class="container-grid">${containers.length ? containers.map((container) => containerCard(container, metrics[container.name])).join("") : '<div class="empty-state">No containers yet.</div>'}</div>`;
 }
@@ -412,6 +416,53 @@ async function renderVolumes() {
       .join("")}</tbody>
     </table></div>`
     : '<div class="empty-state">No volumes yet.</div>';
+}
+
+function composeProjectCard(project) {
+  const services = project.services
+    .map(
+      (service) => `
+        <li>
+          <span>${esc(service.name)}</span>
+          <small>${esc(service.container)}</small>
+          ${status(service.status)}
+        </li>`,
+    )
+    .join("");
+  return `<article class="card compose-project-card">
+    <div class="compose-project-heading">
+      <div>
+        <h2>${esc(project.name)}</h2>
+        <p>${project.service_count} service(s) · ${project.running} running</p>
+      </div>
+      ${status(project.status)}
+    </div>
+    <ul class="compose-service-list">${services}</ul>
+    <div class="compose-project-actions">
+      <button data-action="compose-edit" data-name="${esc(project.name)}">Edit YAML</button>
+      <button data-action="compose-start" data-name="${esc(project.name)}">Start</button>
+      <button data-action="compose-stop" data-name="${esc(project.name)}">Stop</button>
+      <button data-action="compose-restart" data-name="${esc(project.name)}">Restart</button>
+      <button
+        class="danger"
+        data-action="compose-down"
+        data-name="${esc(project.name)}"
+      >
+        Down
+      </button>
+    </div>
+  </article>`;
+}
+
+async function renderComposeProjects() {
+  const data = await api("/compose");
+  const projects = data.projects || [];
+  $("#title").textContent = "Compose";
+  $("#actions").innerHTML =
+    '<button class="default" data-action="compose-new">+ New project</button>';
+  $("#content").innerHTML = projects.length
+    ? `<div class="compose-project-grid">${projects.map(composeProjectCard).join("")}</div>`
+    : '<div class="empty-state">No saved Compose projects yet.</div>';
 }
 
 let volumeDetailsRequest = 0;
@@ -605,6 +656,7 @@ async function render() {
   try {
     if (activeView === "images") await renderImages();
     else if (activeView === "volumes") await renderVolumes();
+    else if (activeView === "compose") await renderComposeProjects();
     else if (activeView === "containers") await renderContainers();
     else {
       await renderHome();
@@ -799,6 +851,37 @@ document.addEventListener("click", async (event) => {
   try {
     if (button.dataset.action === "refresh") await render();
     else if (button.dataset.action === "run") await openRunDialog();
+    else if (button.dataset.action === "compose") {
+      window.vcontainerCompose.open();
+      return;
+    }
+    else if (button.dataset.action === "compose-new") {
+      window.vcontainerCompose.open();
+      return;
+    }
+    else if (button.dataset.action === "compose-edit") {
+      const project = await api(`/compose/${encode(name)}`);
+      window.vcontainerCompose.edit(name, project.yaml);
+      return;
+    }
+    else if (button.dataset.action === "compose-start")
+      await api(`/compose/${encode(name)}/start`, { method: "POST" });
+    else if (button.dataset.action === "compose-stop")
+      await api(`/compose/${encode(name)}/stop`, { method: "POST" });
+    else if (button.dataset.action === "compose-restart")
+      await api(`/compose/${encode(name)}/restart`, { method: "POST" });
+    else if (
+      button.dataset.action === "compose-down" &&
+      confirm(
+        `Remove ${name} and all its containers? Named volumes will be preserved.`,
+      )
+    ) {
+      await api(`/compose/${encode(name)}/down`, {
+        method: "POST",
+      });
+
+      toast(`Removed Compose project ${name}`);
+    }
     else if (button.dataset.action === "killall") { if (confirm("Delete ALL containers?")) await killAllContainers(); }
     else if (button.dataset.action === "details") await showDetails(name);
     else if (button.dataset.action === "resources") {
@@ -866,6 +949,10 @@ document.addEventListener("click", async (event) => {
   } finally {
     restoreButton();
   }
+});
+
+window.addEventListener("compose-changed", () => {
+  if (activeView === "compose") render();
 });
 
 const pullImageForm = $("#pull-image-form");

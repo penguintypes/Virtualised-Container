@@ -5,6 +5,7 @@
 **/.ruff_cache/
 **/.venv/
 .uv-cache/
+gui/node_modules/
 
 # PyInstaller
 client/build/

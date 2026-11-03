@@ -7,6 +7,7 @@
 <link rel="icon" href="logo.png" />
     <link rel="stylesheet" href="7.css" />
     <link rel="stylesheet" href="style.css?v=27" />
+    <link rel="stylesheet" href="features/compose/compose.css?v=3" />
   </head>
   <body>
     <div class="resize-handle resize-top" data-resize="top"></div>
@@ -48,6 +49,7 @@
             <button data-view="containers">Containers</button>
             <button data-view="images">Images</button>
             <button data-view="volumes">Volumes</button>
+            <button data-view="compose">Compose</button>
           </nav>
           <div class="sidebar-footer">
             <small id="health">Checking backend…</small>
@@ -260,8 +262,47 @@
         class="dialog-content has-scrollbar"
       ></div>
     </dialog>
+	
+	<dialog id="compose-dialog" class="window glass active compose-dialog">
+	  <div class="title-bar">
+		<div id="compose-dialog-title" class="title-bar-text">Compose project</div>
 
-    <script src="app.js?v=29"></script>
+		<div class="title-bar-controls">
+		  <button
+			type="button"
+			aria-label="Close"
+			data-close="compose-dialog"
+		  ></button>
+		</div>
+	  </div>
+
+	  <div class="compose-body">
+		<div class="compose-toolbar">
+		  <button id="compose-upload" type="button">Upload YAML</button>
+		  <button id="compose-validate" type="button">Validate</button>
+          <button id="compose-start" type="button" class="default">
+			Start
+		  </button>
+          <button id="compose-save" type="button" class="default" hidden>
+            Save YAML
+          </button>
+		</div>
+
+		<input
+		  id="compose-file"
+		  type="file"
+		  accept=".yaml,.yml"
+		  hidden
+    />
+
+    <div id="compose-editor"></div>
+    <p id="compose-result" role="status"></p>
+  </div>
+</dialog>
+
+    <script src="features/compose/editor.bundle.js?v=1"></script>
+    <script src="features/compose/compose.js?v=2"></script>
+    <script src="app.js?v=31"></script>
 
 </body>
 </html>
