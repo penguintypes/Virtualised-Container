@@ -15,9 +15,9 @@ HELPER_URL = (
     f"v{HELPER_VERSION}/"
     f"vcontainer-helpers-v{HELPER_VERSION}.zip"
 )
-HELPER_SHA256 = (
-    "21d510e2d1c75c7ce6d88df5e5795f5"
-    "2c51b383928d31a4f1f03559c2874369e"
+SHA256 = (
+    "7cb8619cd159bf316f8253333ae1bb05"
+    "68d7c51cf6db687176b8b30a47e68743"
 )
 EXPECTED_HELPERS = {
     "vcontainer-read",
