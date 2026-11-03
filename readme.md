@@ -139,8 +139,33 @@ The GUI opens a native PyWebView window. It provides pages for:
 - live system information: CPU, RAM, process count, network and storage;
 - container processes, logs and published localhost ports.
 
-The browser dashboard uses the same interface if you prefer not to open the
-desktop window:
+### Browser GUI with uv
+
+Run the API directly with `uv` if you want the browser interface without the
+PyWebView desktop window:
+
+```powershell
+uv run --project backend/api uvicorn vcontainer_api.main:app `
+  --host 127.0.0.1 `
+  --port 8011
+```
+
+Keep that terminal open. In another PowerShell window, open the GUI:
+
+```powershell
+Start-Process "http://127.0.0.1:8011/"
+```
+
+The API documentation for this process is available at:
+
+```powershell
+Start-Process "http://127.0.0.1:8011/docs"
+```
+
+Port `8011` avoids conflicting with the installed WSL service on port `8010`.
+PyWebView is not required. Stop the development server with `Ctrl+C`.
+
+If you use the installed service instead, no `uv` process is needed. Open:
 
 ```text
 http://127.0.0.1:8010/
