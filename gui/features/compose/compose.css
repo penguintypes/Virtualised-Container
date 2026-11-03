@@ -129,7 +129,11 @@ dialog.compose-dialog {
 }
 
 [data-theme="dark"] .compose-toolbar::after {
-  color: #bfd0df;
+  color: #aebfce;
+  background:
+    linear-gradient(#344554, #26333f) padding-box,
+    linear-gradient(135deg, transparent 46%, #7892a8 47% 53%, transparent 54%)
+      left 4px center / 12px 12px no-repeat;
 }
 
 [data-theme="dark"] #compose-editor {
@@ -138,6 +142,31 @@ dialog.compose-dialog {
   box-shadow:
     inset 0 0 0 1px #ffffff18,
     0 1px 3px #0008;
+}
+
+[data-theme="dark"] #compose-editor .cm-editor,
+[data-theme="dark"] #compose-editor .cm-scroller {
+  color: #c9d4df;
+  background: #1d2630;
+}
+
+[data-theme="dark"] #compose-editor .cm-gutters {
+  color: #8293a3;
+  background: #17202a;
+  border-right-color: #465665;
+}
+
+[data-theme="dark"] #compose-editor .cm-activeLine,
+[data-theme="dark"] #compose-editor .cm-activeLineGutter {
+  background: #2a3744;
+}
+
+[data-theme="dark"] #compose-editor .cm-selectionBackground {
+  background: #315b7d !important;
+}
+
+[data-theme="dark"] #compose-editor .cm-cursor {
+  border-left-color: #f4f7fa;
 }
 
 [data-theme="dark"] #compose-result {

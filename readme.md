@@ -12,6 +12,23 @@ Vcontainer is an educational project. It is useful for learning how container
 runtimes work and for testing the project's own container workflow. It has not
 had the compatibility or security review required for production workloads.
 
+The project has two Windows clients:
+
+- a command-line client for scripts and terminal work;
+- a desktop GUI for the same runtime and API.
+
+Both clients use the same WSL-backed engine, so a container started from the CLI
+appears in the GUI and a container started in the GUI can be managed from the
+CLI.
+
+## Goal
+
+Vcontainer aims to make Linux container concepts understandable while keeping
+the Windows workflow simple. The C runtime handles namespaces, cgroups,
+OverlayFS, networking and seccomp inside WSL. Python provides the Windows
+client and API layer, and the GUI presents the same operations without hiding
+where the runtime is running.
+
 ## What works
 
 - OCI and Docker image pulls
@@ -104,6 +121,41 @@ python "client/vcontainer.py" stop web
 python "client/vcontainer.py" rm web
 ```
 
+## Using the desktop GUI
+
+Install the project first, then start the desktop application from the project
+root:
+
+```powershell
+uv run --project "client" vcontainer-gui
+```
+
+The GUI opens a native PyWebView window. It provides pages for:
+
+- containers: start, stop, inspect, remove, logs and resource limits;
+- images: pull, view sizes and delete images;
+- volumes: create, inspect and remove unused volumes;
+- Compose: validate YAML, start, stop, restart, edit and remove saved projects;
+- live system information: CPU, RAM, process count, network and storage;
+- container processes, logs and published localhost ports.
+
+The browser dashboard uses the same interface if you prefer not to open the
+desktop window:
+
+```text
+http://127.0.0.1:8010/
+```
+
+The API documentation is available at:
+
+```text
+http://127.0.0.1:8010/docs
+```
+
+The first GUI action can take longer while WSL wakes up or while an image
+inventory is calculated. Later image and storage requests use short-lived
+caches.
+
 ## Command reference
 
 The root launcher keeps the command stable even though the implementation lives
@@ -150,6 +202,10 @@ python "client/vcontainer.py" run alpine `
   -d `
   -- /bin/sleep 300
 ```
+
+For CPU limits, the GUI accepts CPU cores such as `0.5`, `1` or `2`. The CLI
+currently exposes the lower-level cgroup form with `--cpu-max QUOTA PERIOD`.
+The API rejects a request that exceeds the number of CPUs available to WSL.
 
 Supported `run` options:
 
@@ -210,6 +266,26 @@ python "client/vcontainer.py" compose down $config
 
 `stop` keeps container metadata and volumes. `start` runs the stopped services
 again. `down` removes the project containers but keeps named volumes.
+
+The GUI's Compose page stores projects registered through the API and shows the
+state of each service. Starting a project may show services as partially
+started for a moment while WSL processes enter their cgroups; the page polls
+until the project reaches its final state.
+
+### Environment variables and volumes
+
+The CLI accepts repeated `--env` and `--volume` options. In the GUI, enter one
+environment assignment per line:
+
+```text
+DB_HOST=10.88.0.30
+DB_NAME=blogdrop_db
+LOG_LEVEL=info
+```
+
+A volume target is the path inside the container. For example, Redis normally
+uses `/data`, MySQL uses `/var/lib/mysql`, and nginx website files commonly use
+`/usr/share/nginx/html`.
 
 ## GUI and API
 
@@ -422,3 +498,21 @@ wsl --shutdown
 - Kubernetes pods are not implemented.
 - Detached lifecycle supervision and image compatibility still need broader
   testing.
+
+## Recent changes
+
+- Added a WSL-installed FastAPI service for the Windows clients.
+- Added a PyWebView desktop client alongside the browser dashboard.
+- Added Compose project listing, YAML editing, validation, start, stop, restart
+  and remove operations.
+- Added named volumes, persistent storage inspection and complete storage
+  accounting for images, volumes and container writable data.
+- Added CPU, memory, process, network and block-I/O metrics.
+- Added friendly CPU-core input in the GUI with validation against WSL CPU
+  capacity.
+- Added retry handling to the BlogDrop example so a backend can wait for MySQL
+  to become ready instead of exiting on the first connection refusal.
+- Added image inventory caching and reduced duplicate runtime calls during GUI
+  refreshes.
+- Added live Compose status refreshes so the GUI follows services while they
+  start.

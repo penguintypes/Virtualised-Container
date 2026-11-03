@@ -7,7 +7,7 @@
 <link rel="icon" href="logo.png" />
     <link rel="stylesheet" href="7.css" />
     <link rel="stylesheet" href="style.css?v=27" />
-    <link rel="stylesheet" href="features/compose/compose.css?v=3" />
+    <link rel="stylesheet" href="features/compose/compose.css?v=5" />
   </head>
   <body>
     <div class="resize-handle resize-top" data-resize="top"></div>
@@ -96,10 +96,11 @@
             placeholder="optional; image default is used when empty"
         /></label>
         <label
-          >Environment<input
+          >Environment variables<textarea
             id="environment"
-            placeholder="KEY=value,OTHER=value"
-        /></label>
+            rows="3"
+            placeholder="DB_HOST=10.88.0.30&#10;DB_NAME=example&#10;LOG_LEVEL=info"
+          ></textarea></label>
         <div class="form-grid">
           <label
             >Named volume<select id="container-volume">
@@ -114,8 +115,13 @@
             >PID limit<input id="pids" type="number" min="1" placeholder="64"
           /></label>
           <label
-            >CPU quota/period<input id="cpus" placeholder="50000/100000"
-          /></label>
+            >CPU cores<input
+              id="cpus"
+              type="number"
+              min="0.1"
+              step="0.1"
+              placeholder="1"
+            /></label>
           <label>Published port<input id="port" placeholder="8080:80" /></label>
         </div>
         <p class="dialog-actions">
@@ -161,9 +167,12 @@
             required
         /></label>
         <label
-          >CPU quota/period<input
+          >CPU cores<input
             id="resource-cpu"
-            placeholder="50000/100000"
+            type="number"
+            min="0.1"
+            step="0.1"
+            placeholder="1"
             required
         /></label>
         <p class="dialog-actions">
@@ -302,7 +311,7 @@
 
     <script src="features/compose/editor.bundle.js?v=1"></script>
     <script src="features/compose/compose.js?v=2"></script>
-    <script src="app.js?v=31"></script>
+    <script src="app.js?v=42"></script>
 
 </body>
 </html>

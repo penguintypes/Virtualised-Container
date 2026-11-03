@@ -147,6 +147,18 @@ document.addEventListener("pointercancel", () => {
 
 
 let pendingRequests = 0;
+const refreshAfterAction = new Set([
+  "compose-start",
+  "compose-stop",
+  "compose-restart",
+  "compose-remove",
+  "start",
+  "stop",
+  "delete",
+  "delete-image",
+  "delete-inspected-volume",
+  "delete-volume",
+]);
 
 async function withBusyCursor(operation) {
   pendingRequests += 1;
@@ -184,6 +196,25 @@ function bytes(value) {
     index += 1;
   }
   return `${number.toFixed(index ? 1 : 0)} ${units[index]}`;
+}
+
+const CPU_PERIOD = 100000;
+
+function cpuLimit(cores) {
+  const value = Number(cores);
+  if (!Number.isFinite(value) || value < 0.1) {
+    throw new Error("CPU cores must be 0.1 or greater");
+  }
+  return {
+    cpu_quota: Math.round(value * CPU_PERIOD),
+    cpu_period: CPU_PERIOD,
+  };
+}
+
+function cpuCores(cpuMax) {
+  const [quota, period] = String(cpuMax || "").trim().split(/\s+/);
+  if (quota === "max" || !Number(quota) || !Number(period)) return "1";
+  return String(Number((Number(quota) / Number(period)).toFixed(2)));
 }
 
 function toast(message, error = false) {
@@ -315,13 +346,8 @@ async function renderHome() {
   const runningContainers = containers.filter(
     (item) => item.status === "running",
   );
-  const metrics = {};
-  await Promise.all(
-    runningContainers.map(async (container) => {
-      metrics[container.name] = await api(
-        `/containers/${encode(container.name)}/metrics`,
-      ).catch(() => null);
-    }),
+  const metrics = Object.fromEntries(
+    runningContainers.map((container) => [container.name, container.metrics]),
   );
   const activeMetrics = Object.values(metrics).filter(Boolean);
   const memoryUsed = activeMetrics.reduce(
@@ -346,7 +372,7 @@ async function renderHome() {
       <article class="card"><span>Running</span><strong>${running}</strong></article>
       <article class="card"><span>Stopped</span><strong>${containers.length - running}</strong></article>
       <article class="card"><span>Images</span><strong>${asList(images, "images").length}</strong><small>${asList(volumesRaw, "volumes").length} volumes</small></article>
-      <article class="card"><span>Disk utilization</span><strong>${disk ? bytes(disk.used_bytes) : "—"}</strong><small>${disk ? `Writable layers, metadata and logs · ${disk.container_count} containers` : "Disk usage unavailable"}</small></article>
+      <article class="card"><span>Disk Utilization</span><strong>${disk ? bytes(disk.used_bytes) : "—"}</strong><small>${disk ? `Images ${bytes(disk.image_bytes)} · Volumes ${bytes(disk.volume_bytes)} · Containers ${bytes(disk.container_bytes)}` : "Disk usage unavailable"}</small></article>
     </div>
     <div class="section-title"><h2>Containers</h2><button data-action="refresh">Refresh</button></div>
     <div class="container-grid">${containers.length ? containers.map((container) => containerCard(container, metrics[container.name])).join("") : '<div class="empty-state">No containers yet.</div>'}</div>`;
@@ -354,15 +380,8 @@ async function renderHome() {
 
 async function renderContainers() {
   const containers = await getContainers();
-  const metrics = {};
-  await Promise.all(
-    containers
-      .filter((item) => item.status === "running")
-      .map(async (container) => {
-        metrics[container.name] = await api(
-          `/containers/${encode(container.name)}/metrics`,
-        ).catch(() => null);
-      }),
+  const metrics = Object.fromEntries(
+    containers.map((container) => [container.name, container.metrics]),
   );
   $("#title").textContent = "Containers";
   $("#actions").innerHTML = `
@@ -445,10 +464,10 @@ function composeProjectCard(project) {
       <button data-action="compose-restart" data-name="${esc(project.name)}">Restart</button>
       <button
         class="danger"
-        data-action="compose-down"
+        data-action="compose-remove"
         data-name="${esc(project.name)}"
       >
-        Down
+        Remove
       </button>
     </div>
   </article>`;
@@ -463,6 +482,23 @@ async function renderComposeProjects() {
   $("#content").innerHTML = projects.length
     ? `<div class="compose-project-grid">${projects.map(composeProjectCard).join("")}</div>`
     : '<div class="empty-state">No saved Compose projects yet.</div>';
+  return projects;
+}
+
+async function followComposeProject(name, expectedStatus) {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    if (activeView !== "compose") return;
+
+    try {
+      const projects = await renderComposeProjects();
+      const project = projects.find((item) => item.name === name);
+      if (!project || project.status === expectedStatus) return;
+    } catch (error) {
+      console.error("Compose status refresh failed:", error);
+      return;
+    }
+  }
 }
 
 let volumeDetailsRequest = 0;
@@ -705,12 +741,17 @@ async function openRunDialog() {
 function parseEnvironment(text) {
   const environment = {};
   if (!text.trim()) return environment;
-  for (const assignment of text.split(",")) {
+  for (const assignment of text.split(/[\n,]+/)) {
+    if (!assignment.trim()) continue;
     const separator = assignment.indexOf("=");
-    if (separator < 1) throw new Error("Environment must use KEY=value");
-    environment[assignment.slice(0, separator).trim()] = assignment.slice(
+    if (separator < 1) throw new Error("Each environment variable must use KEY=value");
+    const key = assignment.slice(0, separator).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) {
+      throw new Error(`Invalid environment variable name: ${key}`);
+    }
+    environment[key] = assignment.slice(
       separator + 1,
-    );
+    ).trim();
   }
   return environment;
 }
@@ -745,10 +786,7 @@ async function createContainer(event) {
   if ($("#memory").value) payload.memory_max = $("#memory").value;
   if ($("#pids").value) payload.pids_max = Number($("#pids").value);
   if (cpu) {
-    const [quota, period] = cpu.split("/").map(Number);
-    if (!quota || !period) throw new Error("CPU must use QUOTA/PERIOD");
-    payload.cpu_quota = quota;
-    payload.cpu_period = period;
+    Object.assign(payload, cpuLimit(cpu));
   }
   if (port) {
     const [hostPort, containerPort] = port.split(":").map(Number);
@@ -846,86 +884,89 @@ document.addEventListener("click", async (event) => {
   }
   const button = event.target.closest("[data-action]");
   if (!button || button.disabled) return;
-  const restoreButton = setButtonLoading(button, "Please wait…");
+  const action = button.dataset.action;
   const name = button.dataset.name;
+  const confirmations = {
+    "compose-remove": `Remove ${name} and all its containers? Named volumes will be preserved.`,
+    killall: "Delete ALL containers?",
+    delete: `Stop and delete ${name}?`,
+    "delete-image": `Delete image ${name}?`,
+    "delete-volume": `Remove volume ${name}? This only succeeds when it is unused and empty.`,
+  };
+  if (confirmations[action] && !confirm(confirmations[action])) return;
+  const restoreButton = setButtonLoading(button, "Please wait…");
   try {
-    if (button.dataset.action === "refresh") await render();
-    else if (button.dataset.action === "run") await openRunDialog();
-    else if (button.dataset.action === "compose") {
+    if (action === "refresh") await render();
+    else if (action === "run") await openRunDialog();
+    else if (action === "compose") {
       window.vcontainerCompose.open();
       return;
     }
-    else if (button.dataset.action === "compose-new") {
+    else if (action === "compose-new") {
       window.vcontainerCompose.open();
       return;
     }
-    else if (button.dataset.action === "compose-edit") {
+    else if (action === "compose-edit") {
       const project = await api(`/compose/${encode(name)}`);
       window.vcontainerCompose.edit(name, project.yaml);
       return;
     }
-    else if (button.dataset.action === "compose-start")
+    else if (action === "compose-start") {
       await api(`/compose/${encode(name)}/start`, { method: "POST" });
-    else if (button.dataset.action === "compose-stop")
+      void followComposeProject(name, "running");
+    }
+    else if (action === "compose-stop")
       await api(`/compose/${encode(name)}/stop`, { method: "POST" });
-    else if (button.dataset.action === "compose-restart")
+    else if (action === "compose-restart") {
       await api(`/compose/${encode(name)}/restart`, { method: "POST" });
-    else if (
-      button.dataset.action === "compose-down" &&
-      confirm(
-        `Remove ${name} and all its containers? Named volumes will be preserved.`,
-      )
-    ) {
+      void followComposeProject(name, "running");
+    }
+    else if (action === "compose-remove") {
       await api(`/compose/${encode(name)}/down`, {
         method: "POST",
       });
 
       toast(`Removed Compose project ${name}`);
     }
-    else if (button.dataset.action === "killall") { if (confirm("Delete ALL containers?")) await killAllContainers(); }
-    else if (button.dataset.action === "details") await showDetails(name);
-    else if (button.dataset.action === "resources") {
+    else if (action === "killall") await killAllContainers();
+    else if (action === "details") {
+      await showDetails(name);
+      return;
+    }
+    else if (action === "resources") {
       $("#resource-name").value = name;
       $("#resource-memory").value = button.dataset.memory || "512M";
       $("#resource-pids").value = button.dataset.pids || "64";
-      $("#resource-cpu").value = (button.dataset.cpu || "50000 100000").replace(
-        " ",
-        "/",
-      );
+      $("#resource-cpu").value = cpuCores(button.dataset.cpu);
       $("#resources").showModal();
-    } else if (button.dataset.action === "start")
+      return;
+    } else if (action === "start")
       await api(`/containers/${encode(name)}/start`, { method: "POST" });
-    else if (button.dataset.action === "stop")
+    else if (action === "stop")
       await api(`/containers/${encode(name)}/stop`, { method: "POST" });
-    else if (
-      button.dataset.action === "delete" &&
-      confirm(`Stop and delete ${name}?`)
-    )
+    else if (action === "delete")
       await api(`/containers/${encode(name)}`, { method: "DELETE" });
-    else if (
-      button.dataset.action === "delete-image" &&
-      confirm(`Delete image ${name}?`)
-    )
+    else if (action === "delete-image")
       await api(`/images/${encode(name)}`, { method: "DELETE" });
-    else if (button.dataset.action === "pull") {
+    else if (action === "pull") {
       openPullImageDialog();
       return;
-    } else if (button.dataset.action === "create-volume") {
+    } else if (action === "create-volume") {
       $("#create-volume-error").classList.add("is-hidden");
       $("#create-volume").showModal();
       return;
-    } else if (button.dataset.action === "inspect-volume") {
+    } else if (action === "inspect-volume") {
       await inspectVolume(name);
       return;
     } else if (
-      button.dataset.action === "copy-volume-path" &&
+      action === "copy-volume-path" &&
       inspectedVolume
     ) {
       await navigator.clipboard.writeText(inspectedVolume.mount_source);
       toast("Volume path copied");
       return;
     } else if (
-      button.dataset.action === "delete-inspected-volume" &&
+      action === "delete-inspected-volume" &&
       inspectedVolume &&
       confirm(`Remove volume ${inspectedVolume.name}?`)
     ) {
@@ -935,15 +976,12 @@ document.addEventListener("click", async (event) => {
       $("#volume-details").close();
       toast(`Removed volume ${volumeName}`);
     } else if (
-      button.dataset.action === "delete-volume" &&
-      confirm(
-        `Remove volume ${name}? This only succeeds when it is unused and empty.`,
-      )
+      action === "delete-volume"
     ) {
       await api(`/volumes/${encode(name)}`, { method: "DELETE" });
       toast(`Removed volume ${name}`);
     }
-    setTimeout(render, 300);
+    if (refreshAfterAction.has(action)) void render();
   } catch (error) {
     toast(error.message, true);
   } finally {
@@ -1034,11 +1072,12 @@ $("#run-form").addEventListener("submit", async (event) => {
 $("#resource-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const name = $("#resource-name").value;
-  const [cpuQuota, cpuPeriod] = $("#resource-cpu")
-    .value.trim()
-    .split("/")
-    .map(Number);
-  if (!cpuQuota || !cpuPeriod) return toast("CPU must use QUOTA/PERIOD", true);
+  let cpu;
+  try {
+    cpu = cpuLimit($("#resource-cpu").value);
+  } catch (error) {
+    return toast(error.message, true);
+  }
   const button = event.target.querySelector("button:not([type='button'])");
   if (button.disabled) return;
   const restoreButton = setButtonLoading(button, "Saving…");
@@ -1049,8 +1088,7 @@ $("#resource-form").addEventListener("submit", async (event) => {
       body: JSON.stringify({
         memory_max: $("#resource-memory").value.trim(),
         pids_max: Number($("#resource-pids").value),
-        cpu_quota: cpuQuota,
-        cpu_period: cpuPeriod,
+        ...cpu,
       }),
     });
     $("#resources").close();

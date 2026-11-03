@@ -9,6 +9,8 @@ from pathlib import Path
 
 GROUPS = Path("/sys/fs/cgroup/vcontainer")
 STATES = Path("/var/lib/vcontainer/containers")
+IMAGES = Path("/var/lib/vcontainer/images")
+VOLUMES = Path("/var/lib/vcontainer/volumes")
 
 
 def read(path):
@@ -349,10 +351,36 @@ def container_disk_usage():
                 else:
                     used += tree_disk_bytes(child)
             containers.append({"name": state.name, "used_bytes": used})
+    images = []
+    if IMAGES.is_dir():
+        images = [
+            {"name": path.name, "used_bytes": tree_disk_bytes(path / "rootfs")}
+            for path in sorted(IMAGES.iterdir())
+            if (path / "rootfs").is_dir()
+        ]
+
+    volumes = []
+    if VOLUMES.is_dir():
+        volumes = [
+            {"name": path.name, "used_bytes": tree_disk_bytes(path / "_data")}
+            for path in sorted(VOLUMES.iterdir())
+            if (path / "_data").is_dir()
+        ]
+
+    container_bytes = sum(item["used_bytes"] for item in containers)
+    image_bytes = sum(item["used_bytes"] for item in images)
+    volume_bytes = sum(item["used_bytes"] for item in volumes)
     return {
-        "used_bytes": sum(item["used_bytes"] for item in containers),
+        "used_bytes": container_bytes + image_bytes + volume_bytes,
+        "container_bytes": container_bytes,
+        "image_bytes": image_bytes,
+        "volume_bytes": volume_bytes,
         "container_count": len(containers),
+        "image_count": len(images),
+        "volume_count": len(volumes),
         "containers": containers,
+        "images": images,
+        "volumes": volumes,
     }
 
 def main():

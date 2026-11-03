@@ -457,10 +457,17 @@ label {
   margin: 12px 0;
 }
 
-input, select {
+input, select, textarea {
   width: 100%;
   min-height: 24px;
+  box-sizing: border-box;
 }
+
+textarea {
+  resize: vertical;
+  font: inherit;
+}
+
 
 .form-grid, .detail-grid {
   display: grid;
@@ -628,10 +635,11 @@ input, select {
   border-color: #627586;
 }
 
-[data-theme="dark"] input, [data-theme="dark"] select {
+[data-theme="dark"] input, [data-theme="dark"] select, [data-theme="dark"] textarea {
   background-color: #1c2732;
   color: #edf3fa;
 }
+
 
 [data-theme="dark"] table {
   background: #263440;
