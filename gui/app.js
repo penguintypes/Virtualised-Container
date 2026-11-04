@@ -377,7 +377,7 @@ async function renderHome() {
   const running = runningContainers.length;
   $("#title").textContent = "Home";
   $("#actions").innerHTML = `
-	  <button class="default" data-action="run">+ Run container</button>
+	  <button class="default" data-action="run">+ Create</button>
 	  <button data-action="compose">Compose</button>
 	`;
   $("#content").innerHTML = `<div class="container-summary">
@@ -397,7 +397,7 @@ async function renderContainers() {
   );
   $("#title").textContent = "Containers";
   $("#actions").innerHTML = `
-    <button class="default" data-action="run">+ Run container</button>
+    <button class="default" data-action="run">+ Create</button>
     <button data-action="compose">Compose</button>
   `;
   $("#content").innerHTML =
@@ -815,7 +815,7 @@ async function createContainer(event) {
   });
   $("#run").close();
   event.target.reset();
-  toast(`Starting ${payload.name}`);
+  toast(`Create ${payload.name}`);
   setTimeout(render, 400);
 }
 
