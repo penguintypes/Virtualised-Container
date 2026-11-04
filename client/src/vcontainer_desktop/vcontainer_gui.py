@@ -1,9 +1,7 @@
 import ctypes
-import os
-
 import webview
 
-from vcontainer_cli import API_HOST, API_PORT, ensure_backend
+from vcontainer_cli import API_HOST, API_PORT, WSL_DISTRO, ensure_backend
 
 desktop_window = None
 window_maximized = False
@@ -73,8 +71,7 @@ def main():
     global desktop_window
 
     try:
-        distro = os.getenv("VCONTAINER_WSL_DISTRO", "Ubuntu")
-        ensure_backend(distro)
+        ensure_backend(WSL_DISTRO)
 
         desktop_window = webview.create_window(
             **WINDOW_CONFIG,

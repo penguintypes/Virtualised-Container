@@ -180,8 +180,20 @@ async function api(path, options) {
     try {
       data = await response.json();
     } catch (_) {}
-    if (!response.ok)
-      throw new Error(data?.detail || data?.error || response.statusText);
+    if (!response.ok) {
+      const detail = data?.detail || data?.error;
+      const message = Array.isArray(detail)
+        ? detail
+            .map((item) => {
+              const location = item.loc?.slice(1).join(".");
+              return location ? `${location}: ${item.msg}` : item.msg;
+            })
+            .join("; ")
+        : typeof detail === "object" && detail !== null
+          ? JSON.stringify(detail)
+          : detail || response.statusText;
+      throw new Error(message);
+    }
     return data;
   });
 }
@@ -763,13 +775,15 @@ async function createContainer(event) {
   const port = $("#port").value.trim();
   const volume = $("#container-volume").value;
   const volumeTarget = $("#volume-target").value.trim();
-  const payload = { memory: $("#memory").value,
+  const payload = {
     image: $("#image").value,
     name: $("#name").value,
     environment: parseEnvironment($("#environment").value),
   };
   if (Boolean(volume) !== Boolean(volumeTarget)) {
-    throw new Error("Choose a volume and enter its container target path");
+    throw new Error(
+      "Choose a volume and type its target path, such as /data",
+    );
   }
   if (volume) {
     if (

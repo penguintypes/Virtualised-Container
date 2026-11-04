@@ -70,6 +70,6 @@ app.mount(
 def run():
     uvicorn.run(
         "vcontainer_api.main:app",
-        host="127.0.0.1",
-        port=8010,
+        host=os.getenv("VCONTAINER_API_HOST", "127.0.0.1"),
+        port=int(os.getenv("VCONTAINER_API_PORT", "8010")),
     )

@@ -12,6 +12,8 @@ from .config import (
     ENGINE_RUN,
     KEEP_ALIVE_API,
     START_API,
+    WSL_DISTRO,
+    WSL_USER,
 )
 from .errors import VcontainerApiError
 from .parsing import parse_run
@@ -572,7 +574,7 @@ def compose_command(action, filename, distro):
 
 
 def main():
-    distro = os.getenv("VCONTAINER_WSL_DISTRO", "Ubuntu")
+    distro = WSL_DISTRO
     arguments = sys.argv[1:]
 
     if arguments == ["list"]:
@@ -612,7 +614,7 @@ def main():
         if result is not None:
             return result
 
-    user = os.getenv("VCONTAINER_WSL_USER", "vcdev")
+    user = WSL_USER
     directory = os.path.dirname(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     )
