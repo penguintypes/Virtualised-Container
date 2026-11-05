@@ -166,6 +166,8 @@ def follow_logs(name, distro):
 
 
 def load_compose(filename):
+    compose_file = os.path.abspath(filename)
+    project_directory = os.path.dirname(compose_file)
     directory = os.path.dirname(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     )
@@ -185,8 +187,9 @@ def load_compose(filename):
                 executable,
                 "-format",
                 "json",
-                os.path.abspath(filename),
+                compose_file,
             ],
+            cwd=project_directory,
             stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
@@ -227,7 +230,34 @@ def compose_container_name(project, service_name, service):
     return name
 
 
-def compose_payload(project, service_name, service, volume_names=None):
+def linux_path(path, distro):
+    if path.startswith("/"):
+        return path
+    result = subprocess.run(
+        [
+            "wsl.exe", "-d", distro, "--exec",
+            "wslpath", "-a", "-u", path,
+        ],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            result.stderr.strip() or f"Could not translate bind path: {path}"
+        )
+    return result.stdout.strip()
+
+
+def compose_payload(
+    project,
+    service_name,
+    service,
+    volume_names=None,
+    distro=WSL_DISTRO,
+):
     volume_names = volume_names or {}
     image = service.get("image")
     if not image:
@@ -271,14 +301,23 @@ def compose_payload(project, service_name, service, volume_names=None):
 
     for volume in service.get("volumes", []):
         source = volume.get("source")
-        if volume.get("type") != "volume" or not source:
-            raise ValueError("Only named Compose volumes are supported")
-        payload["volumes"].append(
-            {
+        mount_type = volume.get("type")
+        if not source:
+            raise ValueError(f"Compose volume has no source: {service_name}")
+        if mount_type == "volume":
+            payload["volumes"].append({
+                "type": "volume",
                 "name": volume_names.get(source, source),
                 "target": volume["target"],
-            }
-        )
+            })
+        elif mount_type == "bind":
+            payload["volumes"].append({
+                "type": "bind",
+                "source": linux_path(source, distro),
+                "target": volume["target"],
+            })
+        else:
+            raise ValueError(f"Unsupported Compose mount type: {mount_type}")
 
     for port in service.get("ports", []):
         if port.get("protocol", "tcp") != "tcp" or not port.get("published"):

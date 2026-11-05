@@ -278,7 +278,8 @@ async function showDetails(name) {
 }
 
 function status(value) {
-  return `<span class="status ${esc(value)}"><i></i>${esc(value)}</span>`;
+  const label = value === "missing" ? "not created" : value;
+  return `<span class="status ${esc(value)}"><i></i>${esc(label)}</span>`;
 }
 
 function portLinks(container) {
@@ -460,6 +461,7 @@ function composeProjectCard(project) {
         </li>`,
     )
     .join("");
+  const createRequired = project.missing > 0;
   return `<article class="card compose-project-card">
     <div class="compose-project-heading">
       <div>
@@ -471,7 +473,10 @@ function composeProjectCard(project) {
     <ul class="compose-service-list">${services}</ul>
     <div class="compose-project-actions">
       <button data-action="compose-edit" data-name="${esc(project.name)}">Edit YAML</button>
-      <button data-action="compose-start" data-name="${esc(project.name)}">Start</button>
+      <button
+        data-action="${createRequired ? "compose-create" : "compose-start"}"
+        data-name="${esc(project.name)}"
+      >${createRequired ? "Create" : "Start"}</button>
       <button data-action="compose-stop" data-name="${esc(project.name)}">Stop</button>
       <button data-action="compose-restart" data-name="${esc(project.name)}">Restart</button>
       <button
@@ -927,6 +932,14 @@ document.addEventListener("click", async (event) => {
     }
     else if (action === "compose-start") {
       await api(`/compose/${encode(name)}/start`, { method: "POST" });
+      void followComposeProject(name, "running");
+    }
+    else if (action === "compose-create") {
+      const project = await api(`/compose/${encode(name)}`);
+      await api("/compose/up", {
+        method: "POST",
+        body: JSON.stringify({ yaml: project.yaml }),
+      });
       void followComposeProject(name, "running");
     }
     else if (action === "compose-stop")

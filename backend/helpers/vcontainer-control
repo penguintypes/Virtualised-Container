@@ -260,10 +260,12 @@ def create_arguments(data):
         raise ValueError("Invalid volumes")
     targets = set()
     for volume in volumes:
-        if not isinstance(volume, dict) or set(volume) != {"name", "target"}:
+        if not isinstance(volume, dict):
             raise ValueError("Invalid volume")
-        volume_name = valid_name(volume["name"], "volume name")
-        target = volume["target"]
+        mount_type = volume.get("type", "volume")
+        target = volume.get("target")
+        if volume.get("read_only"):
+            raise ValueError("Read-only mounts are not supported yet")
         if (
             not isinstance(target, str)
             or not target.startswith("/")
@@ -275,10 +277,34 @@ def create_arguments(data):
             or target in targets
         ):
             raise ValueError("Invalid or duplicate volume target")
-        if not (Path("/var/lib/vcontainer/volumes") / volume_name / "_data").is_dir():
-            raise ValueError(f"Volume not found: {volume_name}")
         targets.add(target)
-        arguments.extend(["--volume", f"{volume_name}:{target}"])
+        if mount_type == "volume":
+            if set(volume) - {"type", "name", "target", "read_only"}:
+                raise ValueError("Invalid named volume")
+            volume_name = valid_name(volume.get("name"), "volume name")
+            volume_path = (
+                Path("/var/lib/vcontainer/volumes") / volume_name / "_data"
+            )
+            if not volume_path.is_dir():
+                raise ValueError(f"Volume not found: {volume_name}")
+            arguments.extend(["--volume", f"{volume_name}:{target}"])
+        elif mount_type == "bind":
+            if set(volume) - {"type", "source", "target", "read_only"}:
+                raise ValueError("Invalid bind mount")
+            source = volume.get("source")
+            if (
+                not isinstance(source, str)
+                or not source.startswith("/mnt/")
+                or "\0" in source
+                or len(source) > 4095
+                or not Path(source).is_dir()
+            ):
+                raise ValueError(
+                    "Bind source must be an existing directory under /mnt"
+                )
+            arguments.extend(["--bind", f"{source}:{target}"])
+        else:
+            raise ValueError("Invalid mount type")
 
     arguments.extend(["--", *command])
     return name, arguments

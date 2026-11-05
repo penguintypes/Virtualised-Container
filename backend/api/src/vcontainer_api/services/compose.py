@@ -237,16 +237,33 @@ def container_request(
 
     for volume in service.get("volumes", []):
         source = volume.get("source")
-        if volume.get("type") != "volume" or not source:
+        target = volume.get("target")
+        mount_type = volume.get("type")
+        read_only = bool(volume.get("read_only", False))
+
+        if not source or not target:
             raise ComposeValidationError(
-                f"Only named volumes are supported: {service_name}"
+                f"Invalid mount configuration: {service_name}"
             )
-        payload["volumes"].append(
-            {
+
+        if mount_type == "volume":
+            payload["volumes"].append({
+                "type": "volume",
                 "name": volume_names.get(source, source),
-                "target": volume["target"],
-            }
-        )
+                "target": target,
+                "read_only": read_only,
+            })
+        elif mount_type == "bind":
+            payload["volumes"].append({
+                "type": "bind",
+                "source": source,
+                "target": target,
+                "read_only": read_only,
+            })
+        else:
+            raise ComposeValidationError(
+                f"Unsupported mount type: {mount_type}"
+            )
 
     for port in service.get("ports", []):
         published = port.get("published")

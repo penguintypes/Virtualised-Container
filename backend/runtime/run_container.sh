@@ -13,6 +13,7 @@ usage() {
     cat >&2 <<'USAGE'
 Usage: vcontainer COMMAND
   run IMAGE --name NAME [--detach] [--volume NAME:/TARGET]
+      [--bind /HOST/DIRECTORY:/TARGET]
       [--network bridge --ip ADDRESS] [RESOURCE OPTIONS] -- COMMAND [ARGS...]
   pull LOCAL_NAME [REMOTE_REFERENCE]
   list
@@ -201,6 +202,26 @@ for image in json.load(sys.stdin):
                         "--volume"
                         "/var/lib/vcontainer/volumes/$volume_name/_data:$volume_target"
                     )
+                    shift 2
+                    ;;
+                --bind)
+                    [ "$#" -ge 2 ] || fail "--bind requires SOURCE:TARGET"
+                    bind_spec="$2"
+                    bind_source="${bind_spec%%:*}"
+                    bind_target="${bind_spec#*:}"
+
+                    [ -d "$bind_source" ] || fail \
+                        "bind source not found: $bind_source"
+                    case "$bind_source" in
+                        /mnt/*) ;;
+                        *) fail "bind source must be under /mnt" ;;
+                    esac
+                    case "$bind_target" in
+                        /*) ;;
+                        *) fail "bind target must be absolute" ;;
+                    esac
+
+                    resolved_args+=("--volume" "$bind_source:$bind_target")
                     shift 2
                     ;;
                 *)

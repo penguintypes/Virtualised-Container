@@ -336,7 +336,7 @@ async function renderHome() {
   const running = runningContainers.length;
   $("#title").textContent = "Home";
   $("#actions").innerHTML =
-    '<button class="default" data-action="run">+ Run container</button>';
+    '<button class="default" data-action="run">+ Create</button>';
   $("#content").innerHTML = `<div class="container-summary">
       <article class="card"><span>Running</span><strong>${running}</strong></article>
       <article class="card"><span>Stopped</span><strong>${containers.length - running}</strong></article>
@@ -366,7 +366,7 @@ async function renderContainers() {
   );
   $("#title").textContent = "Containers";
   $("#actions").innerHTML =
-    '<button class="default" data-action="run">+ Run container</button>';
+    '<button class="default" data-action="run">+ Create</button>';
   $("#content").innerHTML =
     `<div class="container-grid">${containers.length ? containers.map((container) => containerCard(container, metrics[container.name])).join("") : '<div class="empty-state">No containers yet.</div>'}</div>`;
 }

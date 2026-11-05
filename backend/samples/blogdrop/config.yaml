@@ -14,7 +14,7 @@ services:
       MYSQL_PASSWORD: change-database-password
     volumes:
       - blogdrop-db:/var/lib/mysql
-      - blogdrop-db-init:/docker-entrypoint-initdb.d
+      - ./database:/docker-entrypoint-initdb.d
     networks:
       default:
         ipv4_address: 10.88.0.30
@@ -39,7 +39,7 @@ services:
       - -c
       - test -d /app/node_modules || npm --prefix /app ci --omit=dev; exec node /app/server.js
     volumes:
-      - blogdrop-backend:/app
+      - ./backend:/app
     networks:
       default:
         ipv4_address: 10.88.0.31
@@ -51,7 +51,7 @@ services:
     pids_limit: 64
     cpus: 0.25
     volumes:
-      - blogdrop-frontend:/usr/share/nginx/html
+      - ./frontend:/usr/share/nginx/html
     networks:
       default:
         ipv4_address: 10.88.0.32
@@ -68,7 +68,7 @@ services:
     ports:
       - "8080:80"
     volumes:
-      - blogdrop-nginx:/etc/nginx/conf.d
+      - ./nginx:/etc/nginx/conf.d
     networks:
       default:
         ipv4_address: 10.88.0.33
@@ -76,14 +76,6 @@ services:
 volumes:
   blogdrop-db:
     name: blogdrop-db
-  blogdrop-db-init:
-    name: blogdrop-db-init
-  blogdrop-backend:
-    name: blogdrop-backend
-  blogdrop-frontend:
-    name: blogdrop-frontend
-  blogdrop-nginx:
-    name: blogdrop-nginx
 
 networks:
   default:

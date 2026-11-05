@@ -7,8 +7,39 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class VolumeMount(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    name: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$")
+    type: Literal["volume", "bind"] = "volume"
+
+    name: str | None = Field(
+        default=None,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$"
+    )
+
+    source: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=4095
+    )
+
     target: str = Field(min_length=2, max_length=4095)
+
+    read_only: bool = False
+
+    @model_validator(mode="after")
+    def validate_mount(self):
+        if self.type == "volume" and not self.name:
+            raise ValueError("Named volume requires a name")
+
+        if self.type == "bind":
+            if not self.source or not self.source.startswith("/"):
+                raise ValueError("Bind mount requires an absolute Linux path")
+
+            if self.name is not None:
+                raise ValueError("Bind mounts must use source, not name")
+
+        if not self.target.startswith("/"):
+            raise ValueError("Mount target must be an absolute path")
+
+        return self
 
 
 class PortMapping(BaseModel):
